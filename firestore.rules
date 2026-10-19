@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Hàm kiểm tra xem người dùng có phải là Admin không
+    function isAdmin() {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Cho phép đọc thông tin cá nhân hoặc Admin đọc tất cả
+      allow read: if request.auth != null;
+
+      // Người dùng tự tạo hồ sơ của mình
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      // Cho phép cập nhật hồ sơ khi đã đăng nhập (phục vụ cập nhật ví tiền giữa Poster và Hero)
+      allow update: if request.auth != null;
+
+      allow delete: if false;
+    }
+
+    // Tasks collection
+    match /tasks/{taskId} {
+      allow read: if request.auth != null;
+      
+      allow create: if request.auth != null 
+                     && request.resource.data.posterId == request.auth.uid;
+      
+      allow update: if request.auth != null;
+      
+      allow delete: if isAdmin();
+    }
+  }
+}

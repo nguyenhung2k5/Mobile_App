@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "801203073122",
+    "project_id": "campus-taskhero",
+    "storage_bucket": "campus-taskhero.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:801203073122:android:5078dd1ddc1bb8f761e13b",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIHDLWfGV_VQALw_zbBfG6FQUBhVOHq0s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

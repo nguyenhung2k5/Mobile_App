@@ -1,0 +1,148 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class UserProfile {
+  final String uid;
+  final String email;
+  final String displayName;
+  final String photoURL;
+  final String pillar;
+  final int year;
+  final double totalEarned;
+  final double totalSpent;
+  final double thisMonthEarned;
+  final int tasksCompleted;
+  final int tasksPosted;
+  final double rating;
+  final int totalReviews;
+  final DateTime createdAt;
+  final DateTime lastActive;
+  final bool isAdmin;
+  final bool isBlocked;
+  final bool isVerified;
+  final String adminNotes;
+
+  const UserProfile({
+    required this.uid,
+    required this.email,
+    required this.displayName,
+    this.photoURL = '',
+    this.pillar = 'ISTD',
+    this.year = 1,
+    this.totalEarned = 0.0,
+    this.totalSpent = 0.0,
+    this.thisMonthEarned = 0.0,
+    this.tasksCompleted = 0,
+    this.tasksPosted = 0,
+    this.rating = 5.0,
+    this.totalReviews = 0,
+    required this.createdAt,
+    required this.lastActive,
+    this.isAdmin = false,
+    this.isBlocked = false,
+    this.isVerified = false,
+    this.adminNotes = '',
+  });
+
+  factory UserProfile.fromFirestore(DocumentSnapshot doc) {
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
+    return UserProfile(
+      uid: doc.id,
+      email: data['email'] ?? '',
+      displayName: data['displayName'] ?? '',
+      photoURL: data['photoURL'] ?? '',
+      pillar: data['pillar'] ?? 'ISTD',
+      year: (data['year'] as num?)?.toInt() ?? 1,
+      totalEarned: (data['totalEarned'] as num?)?.toDouble() ?? 0.0,
+      totalSpent: (data['totalSpent'] as num?)?.toDouble() ?? 0.0,
+      thisMonthEarned: (data['thisMonthEarned'] as num?)?.toDouble() ?? 0.0,
+      tasksCompleted: (data['tasksCompleted'] as num?)?.toInt() ?? 0,
+      tasksPosted: (data['tasksPosted'] as num?)?.toInt() ?? 0,
+      rating: (data['rating'] as num?)?.toDouble() ?? 5.0,
+      totalReviews: (data['totalReviews'] as num?)?.toInt() ?? 0,
+      createdAt: data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
+      lastActive: data['lastActive'] is Timestamp
+          ? (data['lastActive'] as Timestamp).toDate()
+          : DateTime.now(),
+      isAdmin: data['isAdmin'] == true,
+      isBlocked: data['isBlocked'] == true,
+      isVerified: data['isVerified'] == true,
+      adminNotes: data['adminNotes'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'email': email,
+      'displayName': displayName,
+      'photoURL': photoURL,
+      'pillar': pillar,
+      'year': year,
+      'totalEarned': totalEarned,
+      'totalSpent': totalSpent,
+      'thisMonthEarned': thisMonthEarned,
+      'tasksCompleted': tasksCompleted,
+      'tasksPosted': tasksPosted,
+      'rating': rating,
+      'totalReviews': totalReviews,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'lastActive': Timestamp.fromDate(lastActive),
+      'isAdmin': isAdmin,
+      'isBlocked': isBlocked,
+      'isVerified': isVerified,
+      'adminNotes': adminNotes,
+    };
+  }
+
+  UserProfile copyWith({
+    String? displayName,
+    String? photoURL,
+    String? pillar,
+    int? year,
+    double? totalEarned,
+    double? totalSpent,
+    double? thisMonthEarned,
+    int? tasksCompleted,
+    int? tasksPosted,
+    double? rating,
+    int? totalReviews,
+    DateTime? lastActive,
+    bool? isAdmin,
+    bool? isBlocked,
+    bool? isVerified,
+    String? adminNotes,
+  }) {
+    return UserProfile(
+      uid: uid,
+      email: email,
+      displayName: displayName ?? this.displayName,
+      photoURL: photoURL ?? this.photoURL,
+      pillar: pillar ?? this.pillar,
+      year: year ?? this.year,
+      totalEarned: totalEarned ?? this.totalEarned,
+      totalSpent: totalSpent ?? this.totalSpent,
+      thisMonthEarned: thisMonthEarned ?? this.thisMonthEarned,
+      tasksCompleted: tasksCompleted ?? this.tasksCompleted,
+      tasksPosted: tasksPosted ?? this.tasksPosted,
+      rating: rating ?? this.rating,
+      totalReviews: totalReviews ?? this.totalReviews,
+      createdAt: createdAt,
+      lastActive: lastActive ?? this.lastActive,
+      isAdmin: isAdmin ?? this.isAdmin,
+      isBlocked: isBlocked ?? this.isBlocked,
+      isVerified: isVerified ?? this.isVerified,
+      adminNotes: adminNotes ?? this.adminNotes,
+    );
+  }
+
+  String get initials {
+    final names = displayName.split(' ');
+    if (names.length >= 2) {
+      return '${names[0][0]}${names[1][0]}'.toUpperCase();
+    }
+    return displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+  }
+
+  String get pillarYear => 'Pillar: $pillar | Year $year';
+}
