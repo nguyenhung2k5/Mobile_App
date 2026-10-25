@@ -330,7 +330,7 @@ flowchart TD
 ```
 
 ---
-## UC-16 | Poster – Xác nhận thanh toán cho Hero
+## UC-16 | Poster – Thanh toán qua VietQR & Xác nhận cho Hero
 
 ```mermaid
 ---
@@ -340,17 +340,19 @@ title: Hệ Thống
 flowchart TD
     classDef default fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000;
     classDef blackNode fill:#000000,stroke:#000000,stroke-width:1px,color:#ffffff;
-    S(( )):::blackNode --> A[Stream phát hiện task chưa thanh toán]
-    A --> B[Hiển thị cảnh báo đỏ 🔔 Cần thanh toán]
-    B --> C[Poster thanh toán trực tiếp cho Hero ngoài app]
-    C --> D[Nhấn Đã thanh toán trong app]
-    D --> E[markTaskAsPaid Firestore]
-    E --> D1{Cập nhật\nthành công?}
-    D1 -- Sai --> F[Hiển thị lỗi]
-    D1 -- Đúng --> G[isPaid = true]
-    G --> H[Cộng thu nhập vào hồ sơ Hero]
-    H --> I[Ẩn cảnh báo]
-    F & I --> Z((●)):::blackNode
+    S(( )):::blackNode --> A[Stream phát hiện task hoàn thành chưa thanh toán]
+    A --> B[Hiển thị cảnh báo 🔔 Cần thanh toán thù lao]
+    B --> C[Poster nhấn Thanh toán cho Hero]
+    C --> D[Mở Modal VietQR NAPAS 24/7 kèm mã QR EMVCo]
+    D --> E[Poster quét QR trên app Ngân hàng hoặc 1-chạm sao chép STK]
+    E --> F[Nhấn Xác nhận đã chuyển khoản]
+    F --> G[markTaskAsPaid Firestore]
+    G --> D1{Cập nhật\nthành công?}
+    D1 -- Sai --> H[Hiển thị thông báo lỗi]
+    D1 -- Đúng --> I[isPaid = true & Cộng thu nhập cho Hero]
+    I --> J[Hiển thị Dialog Đánh giá & Chấm điểm 1-5 sao]
+    J --> K[Gửi đánh giá và hoàn tất giao dịch]
+    H & K --> Z((●)):::blackNode
 ```
 
 ---

@@ -123,8 +123,8 @@ sequenceDiagram
     end
 ```
 
-## 4. Sơ đồ Tuần tự: Xác nhận Hoàn thành và Giao dịch thanh toán
-Mô tả khâu xác nhận quyền lợi chéo giữa hai User (Poster và Hero) kèm theo sự thay đổi logic tài chính trong cơ sở dữ liệu.
+## 4. Sơ đồ Tuần tự: Xác nhận Hoàn thành, Cổng VietQR và Giao dịch thanh toán
+Mô tả khâu xác nhận quyền lợi chéo giữa hai User (Poster và Hero), hiển thị mã VietQR NAPAS 24/7 chuẩn EMVCo và giao dịch nguyên tử cập nhật số dư, đánh giá sao.
 
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff', 'primaryBorderColor':'#000000', 'lineColor':'#000000'}}}%%
@@ -133,28 +133,71 @@ sequenceDiagram
     actor Hero as Người nhận việc (Hero)
     actor Poster as Người đăng việc (Poster)
     participant App as Ứng dụng TaskHero
+    participant VietQR as Cổng VietQR NAPAS
     participant DB as Firestore DB (Document & Transaction)
 
-    Hero->>App: Có mặt tại điểm đích, hoàn tất trao đổi vật phẩm
+    Hero->>App: Có mặt tại điểm đích, hoàn tất công việc
     Hero->>App: Bấm nút "Báo cáo Hoàn thành"
     App->>DB: Đánh dấu status = 'completed' (Write)
     activate DB
-    DB-->>App: Ghi nhận trạng thái hoàn tất vận chuyển
+    DB-->>App: Ghi nhận trạng thái hoàn tất
     deactivate DB
     
-    App-->>Poster: UI Poster báo nhắc "Nhiệm vụ đã hoàn thành, chờ duyệt"
+    App-->>Poster: UI Poster báo nhắc thời gian thực: "Nhiệm vụ đã hoàn thành, chờ thanh toán"
     
-    Poster->>App: Gặp mặt Hero, kiểm tra và xác nhận chéo ngoài đời thực
-    Poster->>App: Thực hiện chuyển khoản thủ công (Bank/ZaloPay ngoài biên)
-    Poster->>App: Bấm "Xác nhận Thanh toán đầy đủ" gửi lên Server
+    Poster->>App: Bấm "Thanh toán cho Hero"
+    App->>VietQR: Yêu cầu sinh mã QR thanh toán theo chuẩn EMVCo (Số tiền, Nội dung Task)
+    activate VietQR
+    VietQR-->>App: Trả về URL ảnh VietQR kèm thông tin tài khoản thụ hưởng
+    deactivate VietQR
+    App-->>Poster: Hiển thị Modal VietQR (Mã QR, Nút 1-chạm sao chép STK & Nội dung)
     
-    App->>DB: Bắt đầu giao dịch nguyên tử (Atomic Firebase Transaction)
+    Poster->>Poster: Dùng ứng dụng Ngân hàng quét QR thanh toán NAPAS 24/7
+    Poster->>App: Bấm "Xác nhận đã chuyển khoản"
+    
+    App->>DB: Bắt đầu giao dịch nguyên tử (Atomic Firebase Transaction - markTaskAsPaid)
     activate DB
-    Note right of App: Update Collection 'tasks': isPaid = true<br>Write Wallet Poster (-)<br>Write Wallet Hero (+)<br>Ghi nhận Doanh thu 5% (Platform)
-    DB->>DB: Thực thi luồng xử lý truyệt đối an toàn (Atomicity)
+    Note right of App: Update Collection 'tasks': isPaid = true<br>Cộng totalEarned & thisMonthEarned cho Hero<br>Cộng totalSpent cho Poster<br>Ghi nhận phí nền tảng 5%
+    DB->>DB: Thực thi luồng xử lý toàn vẹn dữ liệu (Atomicity)
     DB-->>App: Kết sổ Giao dịch Thành công toàn phần
     deactivate DB
     
-    App-->>Hero: Chuyển trạng thái Card: "Đã Nhận Thù Lao"
-    App-->>Poster: Màn hình Toast báo cáo Giao dịch khép kín mỹ mãn
+    App-->>Hero: Banner nổi In-App: "Bạn vừa nhận thù lao thành công! 💰"
+    App-->>Poster: Hiển thị Dialog Đánh giá & Chấm điểm 1-5 sao kèm nhận xét cho Hero
+    
+    Poster->>App: Chọn 5 sao + Nhập lời khen ngợi, bấm "Gửi đánh giá"
+    App->>DB: Cập nhật rating, totalReviews và reviewComment vào Firestore
+```
+
+## 5. Sơ đồ Tuần tự: Hero Hủy nhận việc (Abandon Task & Hoàn trả đơn về Mở)
+Mô tả quy trình xử lý ngoại lệ khi Hero đã nhận việc nhưng bận đột xuất hoặc không thể tiếp tục, đảm bảo nhiệm vụ được hoàn trả an toàn lên Feed chung mà không bị mất dữ liệu.
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff', 'primaryBorderColor':'#000000', 'lineColor':'#000000'}}}%%
+sequenceDiagram
+    autonumber
+    actor Hero as Người nhận việc (Hero)
+    actor Poster as Người đăng việc (Poster)
+    participant App as Ứng dụng TaskHero
+    participant DB as Firestore DB
+
+    Hero->>App: Vào Màn hình Chi tiết nhiệm vụ đã nhận
+    Hero->>App: Bấm nút "Hủy nhận việc / Trả lại đơn"
+    App-->>Hero: Hiển thị Dialog xác nhận & chọn lý do hủy (Bận đột xuất, Sai địa điểm, Khác...)
+    
+    Hero->>App: Chọn lý do hợp lệ và bấm "Xác nhận Trả lại"
+    App->>DB: Gọi hàm abandonTask(taskId, reason)
+    activate DB
+    Note right of App: Update tasks: status = 'open'<br>heroId = null<br>abandonReason = reason<br>Ghi log tin nhắn hệ thống
+    DB->>DB: Khôi phục trạng thái nhiệm vụ về Mở
+    DB-->>App: Cập nhật thành công (200 OK)
+    deactivate DB
+    
+    App-->>Hero: Hiển thị Toast "Đã hủy nhận việc thành công"
+    App-->>Hero: Chuyển hướng về tab Duyệt nhiệm vụ
+    
+    DB-->>Poster: Trigger Stream: Trạng thái task chuyển về 'open'
+    App-->>Poster: Banner nổi In-App cảnh báo: "Hero đã trả lại nhiệm vụ do: [Lý do]"
+    
+    DB-->>App: Đẩy lại nhiệm vụ lên Bảng tin (Feed) chung cho các Hero khác nhận
 ```

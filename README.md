@@ -32,11 +32,16 @@ Tất cả cập nhật **thời gian thực** — cả hai bên đều thấy t
 | 📊 **Bảng điều khiển trực tiếp** | Thẻ thống kê, nhiệm vụ đang thực hiện, biểu đồ hoạt động — stream từ Firestore |
 | 🔍 **Duyệt thông minh** | Lọc theo danh mục, tìm kiếm, phân tab giữa Nhiệm vụ mở / Của tôi |
 | 🏃 **Tiến trình thời gian thực** | Trạng thái: `open` → `accepted` → `inProgress` → `completed` |
+| 💳 **Cổng VietQR NAPAS 24/7** | Tạo mã QR chuẩn EMVCo tự động & 1-chạm sao chép số tài khoản để chuyển khoản tức thì |
+| 🔔 **Thông báo nổi In-App** | Banner thông báo thời gian thực khi có người nhận, hoàn thành, nhận thù lao hoặc bị hủy |
+| 💬 **Trò chuyện trực tiếp** | Trao đổi tin nhắn nội bộ giữa Poster và Hero ngay trên giao diện chi tiết nhiệm vụ |
+| ↩️ **Hủy nhận việc an toàn** | Hero có thể hủy nhận việc kèm lý do, tự động khôi phục task về trạng thái Mở cho sinh viên khác |
+| 🛡️ **Kiểm tra nhập liệu thời gian thực** | Bắt lỗi định dạng số tiền, email, mật khẩu xác nhận với viền đỏ trực quan |
 | 💰 **Thanh toán minh bạch** | Người đăng xác nhận thanh toán → Hero nhận 95% sau khi trừ 5% phí (`isPaid`) |
-| ⭐ **Đánh giá Hero** | Đánh giá hero sau khi hoàn thành nhiệm vụ (1–5 sao) |
+| ⭐ **Đánh giá Hero** | Đánh giá hero sau khi hoàn thành nhiệm vụ (1–5 sao kèm nhận xét chi tiết) |
 | 🎙️ **Nhập liệu giọng nói** | Ghi âm trực tiếp trên ứng dụng để đăng nhiệm vụ rảnh tay |
-| 🤖 **AI định dạng AI** | Hệ thống tự động phân tích và tạo mô tả nhiệm vụ rõ ràng |
-| 🛡️ **Bảng Admin** | Công cụ chuyên dụng cho quản trị viên theo dõi và kiểm duyệt nền tảng |
+| 🤖 **AI định dạng AI** | Hệ thống tự động phân tích và tạo mô tả nhiệm vụ rõ ràng qua Deepgram & OpenAI |
+| 🛡️ **Bảng Admin** | Công cụ chuyên dụng cho quản trị viên theo dõi số liệu, phân bổ nhiệm vụ và kiểm duyệt tài khoản |
 | 🎨 **Giao diện đẹp** | ShadCN components, chủ đề cam gradient, hiệu ứng mượt mà |
 | 📱 **Responsive** | Điện thoại (thanh điều hướng dưới) ↔ Desktop (sidebar) |
 
@@ -65,21 +70,22 @@ Tất cả cập nhật **thời gian thực** — cả hai bên đều thấy t
 
 ```text
 lib/
-├── main.dart                    # 🏠 App shell, routing, sidebar + bottom nav
+├── main.dart                    # 🏠 App shell, routing, sidebar + bottom nav, in-app notification banner
 ├── firebase_options.dart        # 🔥 Cấu hình Firebase
 ├── config/                      # ⚙️ Cấu hình hệ thống chung
 ├── models/
-│   ├── task_model.dart          # 📋 HeroTask, TaskCategory, TaskStatus...
-│   └── user_profile.dart        # 👤 UserProfile với thống kê chi tiết
+│   ├── task_model.dart          # 📋 HeroTask, TaskCategory, TaskStatus, TaskMessage...
+│   ├── user_profile.dart        # 👤 UserProfile với thống kê chi tiết
+│   └── notification_model.dart  # 🔔 AppNotification cho hệ thống thông báo
 ├── screens/
-│   ├── login_screen.dart        # 🔐 Đăng nhập (Email + Google)
-│   ├── register_screen.dart     # 📝 Đăng ký tài khoản mới
+│   ├── login_screen.dart        # 🔐 Đăng nhập (Email + Google) & kiểm tra lỗi trực quan
+│   ├── register_screen.dart     # 📝 Đăng ký tài khoản mới & xác thực mật khẩu
 │   ├── forgot_password_screen.dart # 🔑 Đặt lại mật khẩu cài đặt
 │   ├── home_screen.dart         # 📊 Bảng điều khiển với thống kê trực tiếp
 │   ├── browse_screen.dart       # 🔍 Duyệt và lọc nhiệm vụ
 │   ├── post_task_screen.dart    # ✍️ Tạo nhiệm vụ mới (Voice + AI + Text)
 │   ├── profile_screen.dart      # 👤 Hồ sơ, biểu đồ, lịch sử
-│   ├── task_detail_screen.dart  # 📱 Chi tiết nhiệm vụ + theo dõi liên tục
+│   ├── task_detail_screen.dart  # 📱 Chi tiết nhiệm vụ + theo dõi, chat, VietQR, đánh giá
 │   ├── admin_screen.dart        # 🛡️ Quản lý tổng quan cho admin
 │   └── admin_user_detail_screen.dart # 🛡️ Xem trước và khóa tài khoản
 ├── services/
@@ -89,9 +95,11 @@ lib/
 │   └── audio_service.dart       # 🎙️ Ghi âm trên trình duyệt
 ├── widgets/
 │   ├── task_card.dart           # 🃏 Thẻ nhiệm vụ dùng lại được
-│   └── stat_card.dart           # 📈 Thẻ số liệu bảng điều khiển
+│   ├── stat_card.dart           # 📈 Thẻ số liệu bảng điều khiển
+│   └── user_avatar.dart         # 🖼️ Avatar người dùng hỗ trợ ảnh mạng & ký tự đại diện
 ├── utils/
-│   └── currency_format.dart     # 💰 Định dạng tiền VND chuẩn
+│   ├── currency_format.dart     # 💰 Định dạng tiền VND chuẩn
+│   └── vietqr_helper.dart       # 🏦 Tạo mã VietQR chuẩn EMVCo NAPAS 24/7
 └── theme/
     └── app_colors.dart          # 🎨 Bảng màu cam
 ```
@@ -103,27 +111,33 @@ lib/
 ### Collection `users`
 | Trường | Kiểu | Mô tả |
 |--------|------|-------|
-| `displayName` | string | Tên người dùng |
-| `email` | string | Email |
-| `pillar` | string | Khoa/Ngành (VD: ISTD) |
+| `displayName` | string | Tên người dùng hiển thị |
+| `email` | string | Email tài khoản (@phenikaa-uni.edu.vn hoặc Gmail) |
+| `avatarUrl` | string? | Đường dẫn ảnh đại diện cá nhân |
+| `pillar` | string | Khoa/Ngành (VD: ISTD, CNTT, Kế toán...) |
 | `year` | int | Năm học (1–5) |
-| `totalEarned`, `thisMonth..` | double | Các chuẩn đo thu nhập của hero |
-| `totalSpent` | double | Tổng chi khi đăng nhiệm vụ |
-| `rating`, `totalReviews` | double | Đánh giá tổng hợp |
-| `tasksCompleted`, `..Posted` | int | Thống kê số lượng nhiệm vụ |
-| `isAdmin`, `isBlocked` | bool | Quyền hạn và trạng thái định danh |
+| `totalEarned`, `thisMonthEarned` | double | Thống kê thu nhập tích lũy và thu nhập tháng |
+| `totalSpent` | double | Tổng chi phí đã thanh toán cho các nhiệm vụ |
+| `rating`, `totalReviews` | double / int | Điểm đánh giá trung bình (1–5 sao) và tổng số lượt đánh giá |
+| `tasksCompleted`, `tasksPosted` | int | Số lượng nhiệm vụ đã hoàn thành và đã đăng |
+| `isAdmin`, `isBlocked` | bool | Quyền quản trị viên và trạng thái khóa tài khoản |
+| `adminNotes` | string? | Ghi chú lý do của quản trị viên |
 
 ### Collection `tasks`
 | Trường | Kiểu | Mô tả |
 |--------|------|-------|
-| `title`, `description` | string | Nội dung và tiêu đề |
+| `title`, `description` | string | Tiêu đề và mô tả chi tiết công việc |
 | `category` | string | `food`, `academic`, `tech`, `errands`, `social`, `marketplace` |
-| `status` | string | `open` → `accepted` → `inProgress` → `completed` |
-| `compensation` | double | Số tiền thưởng (VND) |
-| `urgency` | string | `normal`, `urgent`, `emergency` |
-| `posterId` / `heroId` | string | Liên kết người liên quan |
-| `pickup` / `delivery` | map | `{building, level, landmark}` |
-| `isPaid` | bool | Trạng thái đợi người đăng thanh toán |
+| `status` | string | `open` → `accepted` → `inProgress` → `completed` (hoặc `cancelled`) |
+| `compensation` | double | Số tiền thù lao (VND) |
+| `urgency` | string | Mức độ khẩn cấp: `normal`, `urgent`, `emergency` |
+| `posterId`, `heroId` | string / string? | ID của người đăng và ID của Hero nhận việc |
+| `pickup`, `delivery` | map | Thông tin vị trí: `{building, level, landmark}` |
+| `isPaid` | bool | Trạng thái xác nhận đã chuyển khoản / thanh toán |
+| `messages` | list<map> | Lịch sử tin nhắn trao đổi trực tiếp trong task |
+| `hasReviewed`, `heroRatingGiven` | bool / double? | Trạng thái và điểm đánh giá Poster chấm cho Hero |
+| `heroReviewComment` | string? | Lời nhận xét chi tiết sau khi hoàn thành |
+| `abandonReason` | string? | Lý do hủy nhận việc nếu Hero trả lại đơn |
 
 ---
 
@@ -132,16 +146,17 @@ lib/
 ```text
   ┌──────────┐    Hero nhận       ┌─────────────┐   Bắt đầu làm    ┌────────────────┐
   │   MỞ    │ ──────────────────►│  ĐÃ NHẬN    │ ───────────────►│ ĐANG THỰC HIỆN│
-  └──────────┘                    └─────────────┘                  └────────────────┘
-       │                                                                  │
-       │ Người đăng hủy                                                   │ Hoàn thành
+  │          │ ◄──────────────────│             │                  └────────────────┘
+  └──────────┘   Hero hủy nhận    └─────────────┘                          │
+       │         (trả lại việc)                                            │ Hoàn thành
+       │ Người đăng hủy                                                   │
        ▼                                                                  ▼
   ┌──────────┐                                                     ┌────────────────┐
   │  ĐÃ HỦY  │                                                     │   HOÀN THÀNH  │
   └──────────┘                                                     │ (isPaid: false)│
                                                                    └────────────────┘
                                                                           │
-                                                                          │ Đã trả tiền
+                                                                          │ Quét VietQR / Đã chuyển tiền
                                                                           ▼
                                                                    ┌────────────────┐
                                                                    │   HOÀN THÀNH  │

@@ -146,7 +146,7 @@ flowchart LR
 flowchart LR
     Poster(("👤<br/>Poster<br/>(Người đăng)")):::actor
     
-    subgraph Sys3 ["Hệ Thống (Module Đăng việc)"]
+    subgraph Sys3 ["Hệ Thống (Module Đăng việc & Quản lý)"]
         direction TB
         
         UC8(["Quản lý việc<br/>đăng nhiệm vụ"]):::mainUC
@@ -158,6 +158,9 @@ flowchart LR
         
         UC_9_1(["Xem danh sách<br/>nhiệm vụ"]):::subUC
         UC_9_2(["Xác nhận thanh toán<br/>cho Hero"]):::subUC
+        UC_9_3(["Quét mã VietQR<br/>NAPAS 24/7"]):::subUC
+        UC_9_4(["Trò chuyện<br/>trực tiếp (Chat)"]):::subUC
+        UC_9_5(["Đánh giá &<br/>Chấm điểm Hero"]):::subUC
         
         UC_8_1 -. "extend" .-> UC8
         UC_8_2 -. "extend" .-> UC8
@@ -165,6 +168,9 @@ flowchart LR
         
         UC9 -. "include" .-> UC_9_1
         UC_9_2 -. "extend" .-> UC_9_1
+        UC_9_3 -. "extend" .-> UC_9_2
+        UC_9_4 -. "extend" .-> UC_9_1
+        UC_9_5 -. "extend" .-> UC_9_1
     end
     
     Poster --- UC8
@@ -185,7 +191,7 @@ flowchart LR
 flowchart LR
     Hero(("👤<br/>Hero<br/>(Người nhận)")):::actor
     
-    subgraph Sys4 ["Hệ Thống (Module Nhận việc)"]
+    subgraph Sys4 ["Hệ Thống (Module Nhận việc & Thực thi)"]
         direction TB
         
         UC10(["Tìm việc &<br/>Nhận việc"]):::mainUC
@@ -198,6 +204,9 @@ flowchart LR
         
         UC_11_1(["Xem danh sách<br/>nhiệm vụ đang nhận"]):::subUC
         UC_11_2(["Xem thu nhập &<br/>trạng thái thanh toán"]):::subUC
+        UC_11_3(["Cập nhật tiến độ &<br/>Báo hoàn thành"]):::subUC
+        UC_11_4(["Hủy nhận việc<br/>(Trả lại đơn)"]):::subUC
+        UC_11_5(["Trò chuyện<br/>với Người đăng"]):::subUC
         
         UC10 -. "include" .-> UC_10_1
         UC_10_2 -. "extend" .-> UC_10_1
@@ -206,6 +215,9 @@ flowchart LR
         
         UC11 -. "include" .-> UC_11_1
         UC_11_2 -. "extend" .-> UC11
+        UC_11_3 -. "extend" .-> UC_11_1
+        UC_11_4 -. "extend" .-> UC_11_1
+        UC_11_5 -. "extend" .-> UC_11_1
     end
     
     Hero --- UC10
