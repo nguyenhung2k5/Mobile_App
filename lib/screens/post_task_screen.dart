@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../services/api_service.dart';
@@ -29,11 +30,12 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
   Timer? _timer;
 
   final _descController = TextEditingController();
+  final _pickupController = TextEditingController();
+  final _deliveryController = TextEditingController();
+  final _compensationController = TextEditingController(text: '15000');
   final _audioRecorder = WebAudioRecorder();
 
   String? selectedCategory;
-  String? pickupBuilding;
-  String? deliveryBuilding;
   double compensation = 15000;
 
   Map<String, dynamic> aiPreview = {};
@@ -326,6 +328,30 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
   final FirestoreService _firestoreService = FirestoreService();
 
   Future<void> _postTask() async {
+    // Phân tích tiền thưởng
+    final comp = aiPreview['suggested_compensation'] is num
+        ? (aiPreview['suggested_compensation'] as num).toDouble()
+        : double.tryParse(aiPreview['suggested_compensation']?.toString() ?? '15000') ?? 15000.0;
+
+    if (comp < 5000) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Mức thù lao không hợp lệ'),
+          description: Text('Thù lao tối thiểu là 5.000 ₫ để đảm bảo quyền lợi cho Hero.'),
+        ),
+      );
+      return;
+    }
+    if (comp > 20000000) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Mức thù lao quá lớn'),
+          description: Text('Thù lao tối đa là 20.000.000 ₫.'),
+        ),
+      );
+      return;
+    }
+
     // Chống nhấn đúp / gửi nhiều lần
     if (isPosting) return;
     setState(() => isPosting = true);
@@ -349,11 +375,6 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
       final urgency = urgencyStr.toLowerCase() == 'urgent' 
           ? TaskUrgency.urgent 
           : TaskUrgency.normal;
-
-      // Phân tích tiền thưởng
-      final comp = aiPreview['suggested_compensation'] is num
-          ? (aiPreview['suggested_compensation'] as num).toDouble()
-          : double.tryParse(aiPreview['suggested_compensation']?.toString() ?? '5') ?? 5.0;
 
       // Phân tích thời gian ước tính
       final estMinutes = aiPreview['estimated_minutes'] is num
@@ -437,11 +458,74 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
   }
 
   Future<void> _postTaskManual() async {
-    if (_descController.text.trim().isEmpty) {
+    final desc = _descController.text.trim();
+    if (desc.isEmpty) {
       ShadToaster.of(context).show(
         const ShadToast.destructive(
-          title: Text('Thiếu thông tin'),
-          description: Text('Vui lòng nhập mô tả nhiệm vụ.'),
+          title: Text('Thiếu mô tả nhiệm vụ'),
+          description: Text('Vui lòng nhập chi tiết công việc bạn cần giúp.'),
+        ),
+      );
+      return;
+    }
+    if (desc.length < 5) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Mô tả quá ngắn'),
+          description: Text('Mô tả phải có ít nhất 5 ký tự để Hero hiểu rõ yêu cầu.'),
+        ),
+      );
+      return;
+    }
+
+    final pickupText = _pickupController.text.trim();
+    if (pickupText.isEmpty) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Thiếu điểm lấy hàng'),
+          description: Text('Vui lòng nhập điểm lấy hàng hoặc nơi bắt đầu nhiệm vụ.'),
+        ),
+      );
+      return;
+    }
+
+    final deliveryText = _deliveryController.text.trim();
+    if (deliveryText.isEmpty) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Thiếu điểm giao hàng'),
+          description: Text('Vui lòng nhập điểm giao hàng hoặc nơi kết thúc nhiệm vụ.'),
+        ),
+      );
+      return;
+    }
+
+    // Kiểm tra định dạng và khoảng giá thù lao
+    final compText = _compensationController.text.trim().replaceAll('.', '').replaceAll(',', '');
+    final parsedComp = double.tryParse(compText);
+    if (parsedComp == null) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Giá tiền không hợp lệ'),
+          description: Text('Giá thù lao chỉ được nhập số, không được chứa chữ cái hay ký tự đặc biệt.'),
+        ),
+      );
+      return;
+    }
+    if (parsedComp < 5000) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Mức thù lao quá thấp'),
+          description: Text('Mức thù lao tối thiểu là 5.000 ₫ để bảo đảm quyền lợi Hero.'),
+        ),
+      );
+      return;
+    }
+    if (parsedComp > 20000000) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Mức thù lao quá lớn'),
+          description: Text('Mức thù lao tối đa là 20.000.000 ₫. Vui lòng kiểm tra lại.'),
         ),
       );
       return;
@@ -464,13 +548,13 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
       }
 
       final pickup = TaskLocation(
-        building: pickupBuilding ?? 'TBD',
+        building: pickupText,
         level: '',
         landmark: '',
       );
       
       final delivery = TaskLocation(
-        building: deliveryBuilding ?? 'TBD',
+        building: deliveryText,
         level: '',
         landmark: '',
       );
@@ -482,7 +566,7 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
         title: shortTitle.length > 5 ? shortTitle : 'Nhiệm vụ mới',
         description: _descController.text,
         category: category,
-        compensation: compensation,
+        compensation: parsedComp,
         status: TaskStatus.open,
         urgency: TaskUrgency.normal,
         estimatedMinutes: 20,
@@ -510,9 +594,10 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
       setState(() {
         isPosting = false;
         _descController.clear();
+        _pickupController.clear();
+        _deliveryController.clear();
+        _compensationController.text = '15000';
         selectedCategory = null;
-        pickupBuilding = null;
-        deliveryBuilding = null;
         compensation = 15000;
       });
     } catch (e) {
@@ -552,6 +637,9 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
   void dispose() {
     _timer?.cancel();
     _descController.dispose();
+    _pickupController.dispose();
+    _deliveryController.dispose();
+    _compensationController.dispose();
     _audioRecorder.dispose();
     super.dispose();
   }
@@ -986,15 +1074,15 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
           ),
           const SizedBox(height: 16),
           if (_isMobile) ...[
-            _buildLocationSelect(theme, 'Điểm lấy'),
+            _buildLocationInput(theme, 'Điểm lấy'),
             const SizedBox(height: 12),
-            _buildLocationSelect(theme, 'Điểm giao'),
+            _buildLocationInput(theme, 'Điểm giao'),
           ] else
             Row(
               children: [
-                Expanded(child: _buildLocationSelect(theme, 'Điểm lấy')),
+                Expanded(child: _buildLocationInput(theme, 'Điểm lấy')),
                 const SizedBox(width: 12),
-                Expanded(child: _buildLocationSelect(theme, 'Điểm giao')),
+                Expanded(child: _buildLocationInput(theme, 'Điểm giao')),
               ],
             ),
           const SizedBox(height: 20),
@@ -1022,14 +1110,17 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
                             color: theme.colorScheme.foreground)),
                     const SizedBox(width: 12),
                     SizedBox(
-                      width: 120,
+                      width: 140,
                       child: ShadInput(
-                        placeholder: const Text('15.000'),
+                        controller: _compensationController,
+                        placeholder: const Text('15000'),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         leading: const Padding(
                             padding: EdgeInsets.all(4),
                             child: Text('₫')),
                         onChanged: (v) {
-                          final parsed = double.tryParse(v.replaceAll('.', ''));
+                          final parsed = double.tryParse(v.trim());
                           if (parsed != null) {
                             setState(() => compensation = parsed);
                           }
@@ -1090,9 +1181,9 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
                 onPressed: () {
                   setState(() {
                     _descController.clear();
+                    _pickupController.clear();
+                    _deliveryController.clear();
                     selectedCategory = null;
-                    pickupBuilding = null;
-                    deliveryBuilding = null;
                     compensation = 15000;
                     aiError = null;
                     showPreview = false;
@@ -1107,7 +1198,7 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
     );
   }
 
-  Widget _buildLocationSelect(ShadThemeData theme, String label) {
+  Widget _buildLocationInput(ShadThemeData theme, String label) {
     final isPickup = label == 'Điểm lấy';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1118,21 +1209,9 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
                 fontWeight: FontWeight.w500,
                 color: theme.colorScheme.foreground)),
         const SizedBox(height: 6),
-        ShadSelect<String>(
-          placeholder: const Text('Chọn tòa nhà'),
-          options: buildings
-              .map((b) => ShadOption(value: b, child: Text(b)))
-              .toList(),
-          selectedOptionBuilder: (context, value) => Text(value),
-          onChanged: (v) {
-            setState(() {
-              if (isPickup) {
-                pickupBuilding = v;
-              } else {
-                deliveryBuilding = v;
-              }
-            });
-          },
+        ShadInput(
+          controller: isPickup ? _pickupController : _deliveryController,
+          placeholder: Text(isPickup ? 'Nhập điểm lấy hàng ' : 'Nhập điểm giao hàng '),
         ),
       ],
     );
@@ -1174,7 +1253,6 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
         ? (aiPreview['suggested_compensation'] as num).toStringAsFixed(0)
         : aiPreview['suggested_compensation']?.toString() ?? '15000';
     final compNum = double.tryParse(comp) ?? 15000.0;
-    final heroGets = formatVND(compNum * 0.95);
     final compDisplay = formatVND(compNum);
 
     return Container(

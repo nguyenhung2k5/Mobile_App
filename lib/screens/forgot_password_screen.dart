@@ -20,6 +20,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   
   bool _isLoading = false;
   bool _emailSent = false;
+  String? _emailError;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController.addListener(() {
+      if (_emailError != null) {
+        setState(() => _emailError = _validateEmail(_emailController.text));
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -28,18 +39,60 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Vui lòng nhập email';
+    final v = value?.trim() ?? '';
+    if (v.isEmpty) {
+      return 'Vui lòng nhập địa chỉ email';
     }
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(value)) {
-      return 'Email không hợp lệ';
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$',
+    );
+    if (!emailRegex.hasMatch(v)) {
+      return 'Email không đúng định dạng. Ví dụ: user@gmail.com';
     }
     return null;
   }
 
+  Widget _buildFieldError(String? errorText) {
+    if (errorText == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(LucideIcons.circleAlert, size: 14, color: Color(0xFFDC2626)),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              errorText,
+              style: const TextStyle(
+                color: Color(0xFFDC2626),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleResetPassword() async {
-    if (!_formKey.currentState!.validate()) return;
+    final email = _emailController.text.trim();
+    final err = _validateEmail(email);
+    setState(() => _emailError = err);
+    if (err != null) {
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          title: const Text('Email không hợp lệ'),
+          description: Text(err),
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -220,19 +273,20 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              ShadInput(
-                                controller: _emailController,
-                                placeholder: const Text('email@example.com'),
-                                keyboardType: TextInputType.emailAddress,
-                              ),
-                              if (_formKey.currentState != null && _validateEmail(_emailController.text) != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    _validateEmail(_emailController.text) ?? '',
-                                    style: const TextStyle(color: Colors.red, fontSize: 12),
-                                  ),
+                              Container(
+                                decoration: _emailError != null
+                                    ? BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFFDC2626), width: 1.5),
+                                      )
+                                    : null,
+                                child: ShadInput(
+                                  controller: _emailController,
+                                  placeholder: const Text('email@example.com'),
+                                  keyboardType: TextInputType.emailAddress,
                                 ),
+                              ),
+                              _buildFieldError(_emailError),
 
                               const SizedBox(height: 24),
 

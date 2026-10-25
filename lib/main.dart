@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -18,6 +19,8 @@ import 'screens/admin_screen.dart';
 import 'screens/admin_user_detail_screen.dart';
 import 'services/firestore_service.dart';
 import 'models/user_profile.dart';
+import 'models/notification_model.dart';
+import 'widgets/user_avatar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -95,12 +98,75 @@ class _AppShellState extends State<AppShell> {
   UserProfile? _selectedAdminUser;
   UserProfile? _currentUser;
 
+  StreamSubscription<List<AppNotification>>? _notifSubscription;
+  StreamSubscription<UserProfile?>? _profileSubscription;
+  final Set<String> _seenNotificationIds = {};
+  bool _isFirstNotifLoad = true;
+  AppNotification? _activeInAppNotification;
+  Timer? _inAppDismissTimer;
+
   @override
   void initState() {
     super.initState();
-    _firestoreService.getUserProfileStream().listen((profile) {
+    _profileSubscription = _firestoreService.getUserProfileStream().listen((profile) {
       if (mounted) setState(() => _currentUser = profile);
     });
+
+    _listenToLiveNotifications();
+  }
+
+  void _listenToLiveNotifications() {
+    _notifSubscription = _firestoreService.getNotificationsStream().listen((notifs) {
+      if (!mounted) return;
+
+      if (_isFirstNotifLoad) {
+        for (final n in notifs) {
+          _seenNotificationIds.add(n.id);
+        }
+        _isFirstNotifLoad = false;
+        return;
+      }
+
+      for (final n in notifs) {
+        if (!_seenNotificationIds.contains(n.id)) {
+          _seenNotificationIds.add(n.id);
+          _showInAppNotification(n);
+          break;
+        }
+      }
+    });
+  }
+
+  void _showInAppNotification(AppNotification notif) {
+    _inAppDismissTimer?.cancel();
+    setState(() {
+      _activeInAppNotification = notif;
+    });
+
+    _inAppDismissTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted && _activeInAppNotification?.id == notif.id) {
+        setState(() {
+          _activeInAppNotification = null;
+        });
+      }
+    });
+  }
+
+  void _dismissInAppNotification() {
+    _inAppDismissTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _activeInAppNotification = null;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _profileSubscription?.cancel();
+    _notifSubscription?.cancel();
+    _inAppDismissTimer?.cancel();
+    super.dispose();
   }
 
   bool get _isAdmin => _currentUser?.isAdmin == true;
@@ -136,33 +202,98 @@ class _AppShellState extends State<AppShell> {
 
     return Scaffold(
       backgroundColor: theme.colorScheme.background,
-      body: isMobile
-          ? (_selectedTask != null
-              ? TaskDetailScreen(task: _selectedTask!, onBack: _closeTask)
-              : (_selectedAdminUser != null
-                  ? AdminUserDetailScreen(user: _selectedAdminUser!, onBack: _closeAdminUser)
-                  : _buildPage()))
-          : Row(
-              children: [
-                _buildSidebar(theme),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 250),
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-                    child: KeyedSubtree(
-                      key: ValueKey(_selectedTask?.id ?? _selectedAdminUser?.uid ?? _page),
-                      child: _selectedTask != null
-                          ? TaskDetailScreen(task: _selectedTask!, onBack: _closeTask)
-                          : (_selectedAdminUser != null
-                              ? AdminUserDetailScreen(user: _selectedAdminUser!, onBack: _closeAdminUser)
-                              : _buildPage()),
+      appBar: isMobile && _selectedTask == null && _selectedAdminUser == null
+          ? AppBar(
+              backgroundColor: theme.colorScheme.background,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              titleSpacing: 16,
+              title: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.orangeGradient,
+                      borderRadius: BorderRadius.circular(6),
                     ),
+                    child: const Icon(LucideIcons.shield, size: 16, color: Colors.white),
                   ),
+                  const SizedBox(width: 10),
+                  Text('TaskHero', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: theme.colorScheme.foreground)),
+                ],
+              ),
+              actions: [
+                _buildNotificationBell(theme),
+                const SizedBox(width: 8),
+              ],
+            )
+          : null,
+      body: Column(
+        children: [
+          if (_currentUser?.isBlocked == true)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: const Color(0xFFDC2626),
+              child: const SafeArea(
+                bottom: false,
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.ban, color: Colors.white, size: 16),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Tài khoản của bạn đã bị khóa bởi Quản trị viên. Bạn chỉ có quyền xem, không thể đăng bài, nhận việc hoặc nhắn tin.',
+                        style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
+          Expanded(
+            child: Stack(
+              children: [
+                isMobile
+                    ? (_selectedTask != null
+                        ? TaskDetailScreen(task: _selectedTask!, onBack: _closeTask)
+                        : (_selectedAdminUser != null
+                            ? AdminUserDetailScreen(user: _selectedAdminUser!, onBack: _closeAdminUser)
+                            : _buildPage()))
+                    : Row(
+                        children: [
+                          _buildSidebar(theme),
+                          Expanded(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 250),
+                              transitionBuilder: (child, animation) {
+                                return FadeTransition(opacity: animation, child: child);
+                              },
+                              child: KeyedSubtree(
+                                key: ValueKey(_selectedTask?.id ?? _selectedAdminUser?.uid ?? _page),
+                                child: _selectedTask != null
+                                    ? TaskDetailScreen(task: _selectedTask!, onBack: _closeTask)
+                                    : (_selectedAdminUser != null
+                                        ? AdminUserDetailScreen(user: _selectedAdminUser!, onBack: _closeAdminUser)
+                                        : _buildPage()),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                if (_activeInAppNotification != null)
+                  Positioned(
+                    top: isMobile ? 12 : 20,
+                    left: isMobile ? 16 : null,
+                    right: isMobile ? 16 : 24,
+                    child: _buildInAppNotificationBanner(theme, _activeInAppNotification!, isMobile: isMobile),
+                  ),
               ],
             ),
+          ),
+        ],
+      ),
       bottomNavigationBar: isMobile ? _buildBottomNav(theme) : null,
     );
   }
@@ -180,7 +311,7 @@ class _AppShellState extends State<AppShell> {
         children: [
           // Logo
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 20, 16, 24),
             child: Row(
               children: [
                 Container(
@@ -190,11 +321,13 @@ class _AppShellState extends State<AppShell> {
                     gradient: AppColors.orangeGradient,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Icon(LucideIcons.shield,
+                  child: const Icon(LucideIcons.shield,
                       size: 16, color: Colors.white),
                 ),
                 const SizedBox(width: 10),
                 Text('TaskHero', style: theme.textTheme.h4),
+                const Spacer(),
+                _buildNotificationBell(theme),
               ],
             ),
           ),
@@ -268,7 +401,6 @@ class _AppShellState extends State<AppShell> {
               final displayName = user?.displayName ?? 'Loading...';
               final pillarYear = user != null ? '${user.pillar} Year ${user.year}' : '';
               final photoUrl = user?.photoURL ?? '';
-              final initials = user?.initials ?? '?';
               
               return Container(
                 decoration: BoxDecoration(
@@ -278,23 +410,12 @@ class _AppShellState extends State<AppShell> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    photoUrl.isNotEmpty
-                        ? CircleAvatar(
-                            radius: 16,
-                            backgroundImage: NetworkImage(photoUrl),
-                          )
-                        : CircleAvatar(
-                            radius: 16,
-                            backgroundColor: AppColors.orangeMid,
-                            child: Text(
-                              initials,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.orange600,
-                              ),
-                            ),
-                          ),
+                    UserAvatar(
+                      name: displayName,
+                      photoUrl: photoUrl,
+                      radius: 16,
+                      fontSize: 12,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -423,5 +544,364 @@ class _AppShellState extends State<AppShell> {
       default:
         return HomeScreen(onNavigate: _nav, onTaskTap: _openTask);
     }
+  }
+
+  Widget _buildInAppNotificationBanner(ShadThemeData theme, AppNotification notif, {required bool isMobile}) {
+    IconData icon;
+    Color iconBg;
+    Color iconColor;
+
+    switch (notif.type) {
+      case NotificationType.chat:
+        final isSystem = notif.title.contains('Thông báo');
+        icon = isSystem ? LucideIcons.bellRing : LucideIcons.messageSquare;
+        iconBg = isSystem ? const Color(0xFFFEF3C7) : Colors.blue.shade50;
+        iconColor = isSystem ? const Color(0xFFB45309) : Colors.blue.shade600;
+        break;
+      case NotificationType.accepted:
+        icon = LucideIcons.userCheck;
+        iconBg = const Color(0xFFDCFCE7);
+        iconColor = const Color(0xFF16A34A);
+        break;
+      case NotificationType.delivered:
+        icon = LucideIcons.packageCheck;
+        iconBg = const Color(0xFFFEF3C7);
+        iconColor = const Color(0xFFD97706);
+        break;
+      case NotificationType.payment:
+        icon = LucideIcons.banknote;
+        iconBg = const Color(0xFFDCFCE7);
+        iconColor = const Color(0xFF16A34A);
+        break;
+      case NotificationType.review:
+        icon = LucideIcons.star;
+        iconBg = const Color(0xFFFEF3C7);
+        iconColor = Colors.amber.shade700;
+        break;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: GestureDetector(
+        onTap: () {
+          _dismissInAppNotification();
+          _openTask(notif.task);
+        },
+        child: Container(
+          constraints: BoxConstraints(maxWidth: isMobile ? double.infinity : 420),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.orange400.withValues(alpha: 0.5), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: AppColors.orange500.withValues(alpha: 0.12),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            notif.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        Text(
+                          'vừa xong',
+                          style: TextStyle(fontSize: 10, color: Colors.grey.shade400),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      notif.body,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Chạm để xem chi tiết →',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.orange600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _dismissInAppNotification,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(LucideIcons.x, size: 14, color: Colors.grey.shade600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().slideY(begin: -0.6, end: 0, curve: Curves.easeOutBack, duration: 400.ms).fadeIn(duration: 300.ms);
+  }
+
+  Widget _buildNotificationBell(ShadThemeData theme) {
+    return StreamBuilder<List<AppNotification>>(
+      stream: _firestoreService.getNotificationsStream(),
+      builder: (context, snapshot) {
+        final notifs = snapshot.data ?? [];
+        final count = notifs.length;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: Icon(
+                count > 0 ? LucideIcons.bellRing : LucideIcons.bell,
+                size: 20,
+                color: count > 0 ? AppColors.orange600 : theme.colorScheme.foreground,
+              ),
+              onPressed: () => _showNotificationsSheet(context, notifs),
+            ),
+            if (count > 0)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Text(
+                    count > 9 ? '9+' : '$count',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showNotificationsSheet(BuildContext context, List<AppNotification> notifs) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.bell, size: 20, color: AppColors.orange500),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Thông báo (${notifs.length})',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(LucideIcons.x, size: 20),
+                      onPressed: () => Navigator.of(sheetCtx).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: notifs.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(LucideIcons.bell, size: 40, color: Colors.grey.shade300),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Không có thông báo mới',
+                              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Các cập nhật về nhận việc, tin nhắn, thanh toán sẽ xuất hiện ở đây.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: notifs.length,
+                        separatorBuilder: (_, __) => const Divider(height: 12),
+                        itemBuilder: (context, index) {
+                          final notif = notifs[index];
+                          IconData typeIcon;
+                          Color iconBg;
+                          Color iconColor;
+
+                          switch (notif.type) {
+                            case NotificationType.chat:
+                              typeIcon = LucideIcons.messageSquare;
+                              iconBg = Colors.blue.shade50;
+                              iconColor = Colors.blue.shade600;
+                              break;
+                            case NotificationType.accepted:
+                              typeIcon = LucideIcons.user;
+                              iconBg = Colors.green.shade50;
+                              iconColor = Colors.green.shade600;
+                              break;
+                            case NotificationType.delivered:
+                              typeIcon = LucideIcons.box;
+                              iconBg = Colors.amber.shade50;
+                              iconColor = Colors.amber.shade700;
+                              break;
+                            case NotificationType.payment:
+                              typeIcon = LucideIcons.banknote;
+                              iconBg = Colors.green.shade50;
+                              iconColor = Colors.green.shade700;
+                              break;
+                            case NotificationType.review:
+                              typeIcon = LucideIcons.star;
+                              iconBg = Colors.amber.shade50;
+                              iconColor = Colors.amber.shade600;
+                              break;
+                          }
+
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () {
+                              Navigator.of(sheetCtx).pop();
+                              _openTask(notif.task);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: iconBg,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(typeIcon, size: 18, color: iconColor),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                notif.title,
+                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            Text(
+                                              notif.timeAgo,
+                                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          notif.body,
+                                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

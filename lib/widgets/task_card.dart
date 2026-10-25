@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'user_avatar.dart';
 import '../models/task_model.dart';
 import '../utils/currency_format.dart';
 
@@ -112,10 +113,10 @@ class _TaskCardState extends State<TaskCard> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    ShadAvatar(
-                      task.posterAvatarUrl,
-                      size: const Size(22, 22),
-                      placeholder: Text(task.posterName.isNotEmpty ? task.posterName[0] : '?'),
+                    UserAvatar(
+                      name: task.posterName,
+                      photoUrl: task.posterAvatarUrl,
+                      radius: 12,
                     ),
                     const SizedBox(width: 6),
                     Flexible(

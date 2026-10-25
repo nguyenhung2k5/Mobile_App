@@ -51,18 +51,11 @@ class AuthService {
       return userCredential;
     } on FirebaseAuthException catch (e) {
       print('[Auth] FirebaseAuthException: ${e.code} - ${e.message}');
-      
-      if (e.code == 'popup-closed-by-user') {
-        print('[Auth] Người dùng đã đóng popup');
-      } else if (e.code == 'popup-blocked') {
-        print('[Auth] Popup bị chặn bởi trình duyệt');
-      }
-      
-      return null;
+      rethrow;
     } catch (e, stackTrace) {
       print('[Auth] LỖI: $e');
       print('[Auth] Stack trace: $stackTrace');
-      return null;
+      rethrow;
     }
   }
 

@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum TaskCategory {
   food('Đồ ăn & Vật phẩm', '🍔'),
   academic('Hỗ trợ học tập', '📚'),
@@ -39,6 +41,48 @@ class TaskLocation {
   String get full => landmark.isNotEmpty ? '$building, $level ($landmark)' : short;
 }
 
+class TaskMessage {
+  final String senderId;
+  final String senderName;
+  final String text;
+  final DateTime sentAt;
+
+  const TaskMessage({
+    required this.senderId,
+    required this.senderName,
+    required this.text,
+    required this.sentAt,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'senderId': senderId,
+      'senderName': senderName,
+      'text': text,
+      'sentAt': Timestamp.fromDate(sentAt),
+    };
+  }
+
+  factory TaskMessage.fromMap(Map<String, dynamic> map) {
+    DateTime parsedDate;
+    final rawSentAt = map['sentAt'];
+    if (rawSentAt is Timestamp) {
+      parsedDate = rawSentAt.toDate();
+    } else if (rawSentAt is String) {
+      parsedDate = DateTime.tryParse(rawSentAt) ?? DateTime.now();
+    } else {
+      parsedDate = DateTime.now();
+    }
+
+    return TaskMessage(
+      senderId: map['senderId']?.toString() ?? '',
+      senderName: map['senderName']?.toString() ?? 'Người dùng',
+      text: map['text']?.toString() ?? '',
+      sentAt: parsedDate,
+    );
+  }
+}
+
 class HeroTask {
   final String? id;
   final String title;
@@ -62,6 +106,10 @@ class HeroTask {
   final DateTime? acceptedAt;
   final DateTime? completedAt;
   final bool isPaid;
+  final List<TaskMessage> messages;
+  final bool hasReviewed;
+  final double? heroRatingGiven;
+  final String? heroReviewComment;
 
   const HeroTask({
     this.id,
@@ -86,6 +134,10 @@ class HeroTask {
     this.acceptedAt,
     this.completedAt,
     this.isPaid = false,
+    this.messages = const [],
+    this.hasReviewed = false,
+    this.heroRatingGiven,
+    this.heroReviewComment,
   });
 
   double get platformFee => compensation * 0.05;
@@ -99,7 +151,20 @@ class HeroTask {
     return '${diff.inDays} ngày trước';
   }
 
-  HeroTask copyWith({TaskStatus? status, String? heroId, String? heroName, bool? pickedUp, bool? delivered, DateTime? acceptedAt, DateTime? completedAt, bool? isPaid}) {
+  HeroTask copyWith({
+    TaskStatus? status,
+    String? heroId,
+    String? heroName,
+    bool? pickedUp,
+    bool? delivered,
+    DateTime? acceptedAt,
+    DateTime? completedAt,
+    bool? isPaid,
+    List<TaskMessage>? messages,
+    bool? hasReviewed,
+    double? heroRatingGiven,
+    String? heroReviewComment,
+  }) {
     return HeroTask(
       id: id,
       title: title,
@@ -123,6 +188,10 @@ class HeroTask {
       acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,
       isPaid: isPaid ?? this.isPaid,
+      messages: messages ?? this.messages,
+      hasReviewed: hasReviewed ?? this.hasReviewed,
+      heroRatingGiven: heroRatingGiven ?? this.heroRatingGiven,
+      heroReviewComment: heroReviewComment ?? this.heroReviewComment,
     );
   }
 }

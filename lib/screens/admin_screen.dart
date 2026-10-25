@@ -5,6 +5,7 @@ import '../services/firestore_service.dart';
 import '../models/user_profile.dart';
 import 'admin_user_detail_screen.dart';
 import '../models/task_model.dart';
+import '../widgets/user_avatar.dart';
 import '../theme/app_colors.dart';
 import '../utils/currency_format.dart';
 
@@ -247,20 +248,12 @@ class _AdminScreenState extends State<AdminScreen>
         child: Row(
           children: [
             // Avatar
-            u.photoURL.isNotEmpty
-                ? CircleAvatar(
-                    radius: 22,
-                    backgroundImage: NetworkImage(u.photoURL),
-                  )
-                : CircleAvatar(
-                    radius: 22,
-                    backgroundColor: AppColors.orangeLight,
-                    child: Text(u.initials,
-                        style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.orange600)),
-                  ),
+            UserAvatar(
+              name: u.displayName,
+              photoUrl: u.photoURL,
+              radius: 22,
+              fontSize: 14,
+            ),
             const SizedBox(width: 12),
             // Info
             Expanded(
@@ -588,7 +581,6 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   Widget _transactionRow(ShadThemeData theme, HeroTask task, int index) {
-    final fee = task.compensation * 0.05;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       margin: const EdgeInsets.only(bottom: 8),

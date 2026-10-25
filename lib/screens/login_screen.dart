@@ -25,10 +25,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   bool _obscurePassword = true;
   late TabController _tabController;
 
+  String? _emailError;
+  String? _passwordError;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _emailController.addListener(() {
+      if (_emailError != null) {
+        setState(() => _emailError = _validateEmail(_emailController.text));
+      }
+    });
+    _passwordController.addListener(() {
+      if (_passwordError != null) {
+        setState(() => _passwordError = _validatePassword(_passwordController.text));
+      }
+    });
   }
 
   @override
@@ -40,12 +53,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Vui lòng nhập email';
+    final v = value?.trim() ?? '';
+    if (v.isEmpty) {
+      return 'Vui lòng nhập địa chỉ email';
     }
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(value)) {
-      return 'Email không hợp lệ';
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$',
+    );
+    if (!emailRegex.hasMatch(v)) {
+      return 'Email không đúng định dạng. Ví dụ: user@gmail.com';
     }
     return null;
   }
@@ -57,15 +73,72 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     return null;
   }
 
+  Widget _buildFieldError(String? errorText) {
+    if (errorText == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(LucideIcons.circleAlert, size: 14, color: Color(0xFFDC2626)),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              errorText,
+              style: const TextStyle(
+                color: Color(0xFFDC2626),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleEmailSignIn() async {
-    if (!_formKey.currentState!.validate()) return;
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    final emailErr = _validateEmail(email);
+    final passErr = _validatePassword(password);
+
+    setState(() {
+      _emailError = emailErr;
+      _passwordError = passErr;
+    });
+
+    if (emailErr != null) {
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          title: const Text('Email không hợp lệ'),
+          description: Text(emailErr),
+        ),
+      );
+      return;
+    }
+
+    if (passErr != null) {
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          title: const Text('Thiếu mật khẩu'),
+          description: Text(passErr),
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
       final userCredential = await _authService.signInWithEmail(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+        email: email,
+        password: password,
       );
 
       if (!mounted) return;
@@ -86,18 +159,31 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       switch (e.code) {
         case 'user-not-found':
           errorMessage = 'Không tìm thấy tài khoản với email này.';
+          setState(() => _emailError = errorMessage);
           break;
         case 'wrong-password':
-          errorMessage = 'Mật khẩu không đúng.';
+          errorMessage = 'Mật khẩu không đúng. Vui lòng thử lại.';
+          setState(() => _passwordError = errorMessage);
           break;
         case 'invalid-email':
           errorMessage = 'Email không hợp lệ.';
+          setState(() => _emailError = errorMessage);
           break;
         case 'user-disabled':
-          errorMessage = 'Tài khoản này đã bị vô hiệu hóa.';
+          errorMessage = 'Tài khoản này đã bị khóa hoặc vô hiệu hóa.';
           break;
         case 'invalid-credential':
-          errorMessage = 'Email hoặc mật khẩu không đúng.';
+          errorMessage = 'Email hoặc mật khẩu không chính xác.';
+          setState(() {
+            _emailError = 'Kiểm tra lại email';
+            _passwordError = 'Kiểm tra lại mật khẩu';
+          });
+          break;
+        case 'too-many-requests':
+          errorMessage = 'Quá nhiều lần đăng nhập không thành công. Vui lòng thử lại sau.';
+          break;
+        case 'network-request-failed':
+          errorMessage = 'Lỗi mạng. Vui lòng kiểm tra kết nối internet.';
           break;
         default:
           errorMessage = e.message ?? errorMessage;
@@ -142,24 +228,25 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
+      if (e.code == 'popup-closed-by-user') {
+        // Người dùng chủ động đóng cửa sổ đăng nhập Google
+        return;
+      }
       
       String errorMessage = 'Lỗi xác thực: ${e.code}';
       
       switch (e.code) {
-        case 'popup-closed-by-user':
-          errorMessage = 'Cửa sổ đăng nhập đã bị đóng trước khi hoàn tất xác thực.';
-          break;
         case 'popup-blocked':
           errorMessage = 'Cửa sổ đăng nhập bị chặn bởi trình duyệt. Vui lòng cho phép popup.';
           break;
         case 'unauthorized-domain':
-          errorMessage = 'Tên miền này chưa được ủy quyền. Liên hệ quản trị viên.';
+          errorMessage = 'Tên miền này chưa được ủy quyền trong Firebase. Liên hệ quản trị viên.';
           break;
         case 'operation-not-allowed':
-          errorMessage = 'Google Sign-In chưa được bật trong Firebase Console.';
+          errorMessage = 'Google Sign-In chưa được kích hoạt trong Firebase Console.';
           break;
         default:
-          errorMessage = '${e.message ?? e.code}';
+          errorMessage = e.message ?? e.code;
       }
       
       ShadToaster.of(context).show(
@@ -281,37 +368,49 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   // Trường email
-                                  ShadInput(
-                                    controller: _emailController,
-                                    placeholder: const Text('email@example.com'),
-                                    keyboardType: TextInputType.emailAddress,
-                                  ),
-                                  if (_formKey.currentState != null && _validateEmail(_emailController.text) != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        _validateEmail(_emailController.text) ?? '',
-                                        style: const TextStyle(color: Colors.red, fontSize: 12),
-                                      ),
+                                  Container(
+                                    decoration: _emailError != null
+                                        ? BoxDecoration(
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: const Color(0xFFDC2626), width: 1.5),
+                                          )
+                                        : null,
+                                    child: ShadInput(
+                                      controller: _emailController,
+                                      placeholder: const Text('email@example.com'),
+                                      keyboardType: TextInputType.emailAddress,
+                                      onSubmitted: (_) => _handleEmailSignIn(),
                                     ),
+                                  ),
+                                  _buildFieldError(_emailError),
 
                                   const SizedBox(height: 16),
 
                                   // Trường mật khẩu
-                                  ShadInput(
-                                    controller: _passwordController,
-                                    placeholder: const Text('Nhập mật khẩu'),
-                                    obscureText: _obscurePassword,
-                                    trailing: IconButton(
-                                      icon: Icon(
-                                        _obscurePassword ? LucideIcons.eyeOff : LucideIcons.eye,
-                                        size: 16,
+                                  Container(
+                                    decoration: _passwordError != null
+                                        ? BoxDecoration(
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: const Color(0xFFDC2626), width: 1.5),
+                                          )
+                                        : null,
+                                    child: ShadInput(
+                                      controller: _passwordController,
+                                      placeholder: const Text('Nhập mật khẩu'),
+                                      obscureText: _obscurePassword,
+                                      onSubmitted: (_) => _handleEmailSignIn(),
+                                      trailing: IconButton(
+                                        icon: Icon(
+                                          _obscurePassword ? LucideIcons.eyeOff : LucideIcons.eye,
+                                          size: 16,
+                                        ),
+                                        onPressed: () {
+                                          setState(() => _obscurePassword = !_obscurePassword);
+                                        },
                                       ),
-                                      onPressed: () {
-                                        setState(() => _obscurePassword = !_obscurePassword);
-                                      },
                                     ),
                                   ),
+                                  _buildFieldError(_passwordError),
 
                                   const SizedBox(height: 8),
 

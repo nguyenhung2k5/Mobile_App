@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/user_profile.dart';
 import '../models/task_model.dart';
+import '../models/notification_model.dart';
+import '../utils/currency_format.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -46,7 +48,7 @@ class FirestoreService {
         print('[Firestore] Đang cập nhật lần hoạt động cuối...');
 
         // Kiểm tra xem có cần reset thisMonthEarned (tháng mới) không
-        final existingData = docSnapshot.data() as Map<String, dynamic>?;
+        final existingData = docSnapshot.data();
         final lastActive = existingData?['lastActive'];
         final now = DateTime.now();
         Map<String, dynamic> updates = {'lastActive': Timestamp.now()};
@@ -309,30 +311,18 @@ class FirestoreService {
       
       print('[Firestore] Đã lọc còn ${tasks.length} nhiệm vụ trong 7 ngày gần nhất.');
 
-      // Nhóm theo ngày trong tuần (T2, T3, ...)
-      // ... (phần logic xử lý còn lại giữ nguyên)
-      final Map<String, int> dayCounts = {
-        'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0, 'Sun': 0
-      };
-      
-      // Hàm lấy tên ngày
-      String getDayName(int weekday) {
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        return days[weekday - 1];
-      }
-
       // Khởi tạo với 0 cho 7 ngày gần nhất theo thứ tự
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       List<Map<String, dynamic>> result = [];
       for (int i = 6; i >= 0; i--) {
         final date = now.subtract(Duration(days: i));
-        final dayName = getDayName(date.weekday);
+        final dayName = days[date.weekday - 1];
         result.add({'day': dayName, 'count': 0, 'date': date});
       }
 
       // Điền số lượng
       for (var task in tasks) {
         if (task.completedAt != null) {
-          final dayName = getDayName(task.completedAt!.weekday);
           // Tìm ngày khớp trong danh sách để đếm đúng cho cửa sổ ngày cụ thể
           for (var dayData in result) {
              final dayDate = dayData['date'] as DateTime;
@@ -432,6 +422,56 @@ class FirestoreService {
     print('[Firestore] Nhiệm vụ $taskId đã bị hủy bởi poster $currentUserId');
   }
 
+  /// Hero hủy nhận việc (chỉ được hủy khi chưa bấm đã lấy hàng)
+  Future<void> abandonTask({
+    required String taskId,
+    required String reason,
+  }) async {
+    if (currentUserId == null) throw Exception('Người dùng chưa đăng nhập');
+
+    final taskRef = _firestore.collection('tasks').doc(taskId);
+    final userDoc = await _firestore.collection('users').doc(currentUserId).get();
+    final heroName = userDoc.data()?['displayName'] ?? _auth.currentUser?.displayName ?? 'Hero';
+
+    await _firestore.runTransaction((transaction) async {
+      final taskSnapshot = await transaction.get(taskRef);
+      final taskData = taskSnapshot.data();
+      if (taskData == null) throw Exception('Không tìm thấy nhiệm vụ');
+
+      if (taskData['heroId'] != currentUserId) {
+        throw Exception('Bạn không phải là người nhận nhiệm vụ này');
+      }
+
+      if (taskData['status'] == TaskStatus.completed.name) {
+        throw Exception('Nhiệm vụ đã hoàn thành, không thể hủy nhận');
+      }
+
+      if (taskData['pickedUp'] == true) {
+        throw Exception('Bạn đã lấy hàng, không thể tự ý hủy nhận việc. Vui lòng liên hệ Người đăng hoặc Quản trị viên.');
+      }
+
+      // Tạo tin nhắn hệ thống ghi nhận lý do vào chat của đơn
+      final systemMsg = {
+        'senderId': 'system',
+        'senderName': 'Hệ thống',
+        'text': '$heroName đã hủy nhận việc. Lý do: "$reason". Đơn đã được tự động mở lại cho các Hero khác.',
+        'sentAt': Timestamp.now(),
+      };
+
+      transaction.update(taskRef, {
+        'status': TaskStatus.open.name,
+        'heroId': null,
+        'heroName': null,
+        'acceptedAt': null,
+        'pickedUp': false,
+        'delivered': false,
+        'messages': FieldValue.arrayUnion([systemMsg]),
+      });
+    });
+
+    print('[Firestore] Hero $currentUserId đã hủy nhận việc nhiệm vụ $taskId. Lý do: $reason');
+  }
+
   /// Hoàn thành nhiệm vụ
   Future<void> completeTask(String taskId) async {
     if (currentUserId == null) throw Exception('Người dùng chưa đăng nhập');
@@ -453,15 +493,25 @@ class FirestoreService {
       throw Exception('Nhiệm vụ này đã hoàn thành rồi');
     }
 
-    final compensation = (taskData['compensation'] as num).toDouble();
+    final compensation = (taskData['compensation'] as num?)?.toDouble() ?? 0.0;
     final heroEarnings = compensation * 0.95; // Phí nền tảng 5%
+
+    // Tạo tin nhắn xác nhận thanh toán vào chat
+    final systemMsg = {
+      'senderId': 'system',
+      'senderName': 'Hệ thống',
+      'text': 'Thanh toán thành công! Người đăng đã giải phóng ${formatVND(compensation)}. Thù lao ${formatVND(heroEarnings)} đã được cộng vào Ví của Hero.',
+      'sentAt': Timestamp.now(),
+    };
 
     // Cập nhật trạng thái nhiệm vụ
     await _firestore.collection('tasks').doc(taskId).update({
       'status': TaskStatus.completed.name,
       'completedAt': Timestamp.now(),
+      'isPaid': true,
+      'messages': FieldValue.arrayUnion([systemMsg]),
     });
-    print('[Firestore] Đã cập nhật trạng thái COMPLETED cho task $taskId');
+    print('[Firestore] Đã cập nhật trạng thái COMPLETED & isPaid=true cho task $taskId');
 
     // Cập nhật thu nhập và số nhiệm vụ hoàn thành của hero (dùng heroId, không phải currentUserId)
     try {
@@ -523,6 +573,7 @@ class FirestoreService {
       await _firestore.collection('users').doc(uid).update({
         'totalEarned': earned,
         'thisMonthEarned': earned,
+        'totalSpent': spent,
         'tasksCompleted': heroTasksSnap.docs.length,
         'tasksPosted': posterTasksSnap.docs.length,
       });
@@ -532,19 +583,65 @@ class FirestoreService {
     }
   }
 
-  /// Lấy danh sách nhiệm vụ CHỜ THANH TOÁN (do mình đăng, đã hoàn thành, nhưng chưa trả tiền công)
+  /// Rút tiền từ ví TaskHero về tài khoản ngân hàng (Escrow Payout)
+  Future<void> withdrawBalance({
+    required double amount,
+    required String bankName,
+    required String accountNumber,
+    required String accountHolder,
+  }) async {
+    if (currentUserId == null) throw Exception('Người dùng chưa đăng nhập');
+    if (amount <= 0) throw Exception('Số tiền rút phải lớn hơn 0');
+
+    final userDoc = await _firestore.collection('users').doc(currentUserId).get();
+    if (!userDoc.exists) throw Exception('Hồ sơ không tồn tại');
+
+    final currentBalance = (userDoc.data()?['totalEarned'] as num?)?.toDouble() ?? 0.0;
+    if (amount > currentBalance) {
+      throw Exception('Số dư khả dụng không đủ để rút số tiền này');
+    }
+
+    // 1. Trừ số dư trên Firestore
+    await _firestore.collection('users').doc(currentUserId).update({
+      'totalEarned': FieldValue.increment(-amount),
+    });
+
+    // 2. Ghi nhận giao dịch rút tiền (Withdrawal Request)
+    await _firestore.collection('withdrawals').add({
+      'userId': currentUserId,
+      'amount': amount,
+      'bankName': bankName,
+      'accountNumber': accountNumber,
+      'accountHolder': accountHolder,
+      'status': 'completed', // Mô phỏng duyệt tự động
+      'createdAt': Timestamp.now(),
+    });
+    print('[Firestore] Rút tiền thành công: $amountđ cho $currentUserId');
+  }
+
+  /// Lấy danh sách nhiệm vụ CHỜ THANH TOÁN (do mình đăng: Hero đã giao hàng hoặc đã xong nhưng chưa thanh toán)
   Stream<List<HeroTask>> getUnpaidTasks() {
     if (currentUserId == null) return Stream.value([]);
 
     return _firestore
         .collection('tasks')
         .where('posterId', isEqualTo: currentUserId)
-        .where('status', isEqualTo: TaskStatus.completed.name)
-        .where('isPaid', isEqualTo: false)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => _taskFromFirestore(doc))
-            .toList())
+        .map((snapshot) {
+          final list = snapshot.docs
+              .map((doc) => _taskFromFirestore(doc))
+              .where((task) {
+                // Điều kiện 1: Đã đánh dấu completed nhưng isPaid == false (cần trả nợ tiền mặt/chuyển khoản)
+                final isCompletedUnpaid = (task.status == TaskStatus.completed && task.isPaid == false);
+                // Điều kiện 2: Hero đã giao hàng (delivered == true) và đang chờ Poster xác nhận thanh toán ký quỹ
+                final isDeliveredWaitingPay = (task.delivered == true && task.status != TaskStatus.completed && task.status != TaskStatus.cancelled);
+                
+                return isCompletedUnpaid || isDeliveredWaitingPay;
+              })
+              .toList();
+
+          return list;
+        })
         .handleError((e) {
           print('[Firestore] Lỗi luồng nhiệm vụ nhắc nợ: $e');
           return <HeroTask>[];
@@ -557,6 +654,211 @@ class FirestoreService {
       'isPaid': true,
     });
     print('[Firestore] Đã dập cờ thanh toán cho nhiệm vụ $taskId');
+  }
+
+  /// Gửi tin nhắn trong nhiệm vụ (Task Chat)
+  Future<void> sendTaskMessage(String taskId, String text) async {
+    if (currentUserId == null) throw Exception('Người dùng chưa đăng nhập');
+    final textTrim = text.trim();
+    if (textTrim.isEmpty) return;
+
+    final userDoc = await _firestore.collection('users').doc(currentUserId).get();
+    if (userDoc.exists && userDoc.data()?['isBlocked'] == true) {
+      throw Exception('Tài khoản của bạn đã bị khóa bởi Quản trị viên.');
+    }
+
+    final senderName = _auth.currentUser?.displayName ?? userDoc.data()?['displayName'] ?? 'Người dùng';
+
+    final messageMap = {
+      'senderId': currentUserId,
+      'senderName': senderName,
+      'text': textTrim,
+      'sentAt': Timestamp.now(),
+    };
+
+    await _firestore.collection('tasks').doc(taskId).update({
+      'messages': FieldValue.arrayUnion([messageMap]),
+    });
+    print('[Firestore] Đã gửi tin nhắn cho task $taskId: $textTrim');
+  }
+
+  /// Gửi đánh giá cho Hero sau khi hoàn thành nhiệm vụ
+  Future<void> submitHeroReview({
+    required String heroId,
+    required String taskId,
+    required double rating,
+    required String review,
+  }) async {
+    if (currentUserId == null) throw Exception('Người dùng chưa đăng nhập');
+
+    // 1. Cập nhật sao và tổng số review của Hero
+    final heroDoc = await _firestore.collection('users').doc(heroId).get();
+    if (heroDoc.exists) {
+      final data = heroDoc.data()!;
+      final currentRating = (data['rating'] as num?)?.toDouble() ?? 5.0;
+      final currentReviews = (data['totalReviews'] as num?)?.toInt() ?? 0;
+
+      final newTotalReviews = currentReviews + 1;
+      final newRating = ((currentRating * currentReviews) + rating) / newTotalReviews;
+
+      await _firestore.collection('users').doc(heroId).update({
+        'rating': double.parse(newRating.toStringAsFixed(1)),
+        'totalReviews': newTotalReviews,
+      });
+      print('[Firestore] Đã cập nhật rating cho Hero $heroId: ${newRating.toStringAsFixed(1)}* ($newTotalReviews reviews)');
+    }
+
+    // 2. Đánh dấu cờ đã đánh giá trên Task
+    await _firestore.collection('tasks').doc(taskId).update({
+      'hasReviewed': true,
+      'heroRatingGiven': rating,
+      'heroReviewComment': review.trim(),
+    });
+    print('[Firestore] Đã lưu đánh giá cho task $taskId');
+  }
+
+  /// Lấy danh sách các đánh giá mà Hero đã nhận được
+  Stream<List<Map<String, dynamic>>> getHeroReviewsStream(String heroId) {
+    return _firestore
+        .collection('tasks')
+        .where('heroId', isEqualTo: heroId)
+        .where('hasReviewed', isEqualTo: true)
+        .snapshots()
+        .map((snap) {
+          final list = snap.docs.map((doc) {
+            final data = doc.data();
+            DateTime completedDate = DateTime.now();
+            if (data['completedAt'] is Timestamp) {
+              completedDate = (data['completedAt'] as Timestamp).toDate();
+            }
+            return {
+              'taskId': doc.id,
+              'taskTitle': data['title'] ?? 'Nhiệm vụ',
+              'posterName': data['posterName'] ?? 'Người đăng',
+              'rating': (data['heroRatingGiven'] as num?)?.toDouble() ?? 5.0,
+              'comment': (data['heroReviewComment'] as String?) ?? '',
+              'completedAt': completedDate,
+            };
+          }).toList();
+          list.sort((a, b) => (b['completedAt'] as DateTime).compareTo(a['completedAt'] as DateTime));
+          return list;
+        })
+        .handleError((e) {
+          print('[Firestore] Lỗi lấy danh sách đánh giá: $e');
+          return <Map<String, dynamic>>[];
+        });
+  }
+
+  /// Luồng thông báo thời gian thực tổng hợp các sự kiện của người dùng
+  Stream<List<AppNotification>> getNotificationsStream() {
+    if (currentUserId == null) return Stream.value([]);
+
+    return _firestore
+        .collection('tasks')
+        .snapshots()
+        .map((snap) {
+          final myUid = currentUserId;
+          if (myUid == null) return <AppNotification>[];
+
+          final List<AppNotification> notifs = [];
+
+          for (final doc in snap.docs) {
+            try {
+              final task = _taskFromFirestore(doc);
+              final isPoster = task.posterId == myUid;
+              final isHero = task.heroId == myUid;
+
+              if (!isPoster && !isHero) continue;
+
+              // 1. Thông báo tin nhắn mới
+              if (task.messages.isNotEmpty) {
+                final lastMsg = task.messages.last;
+                if (lastMsg.senderId != myUid) {
+                  final isSystem = lastMsg.senderId == 'system';
+                  notifs.add(AppNotification(
+                    id: 'chat_${task.id}_${lastMsg.sentAt.millisecondsSinceEpoch}',
+                    title: isSystem ? 'Thông báo đơn hàng' : 'Tin nhắn từ ${lastMsg.senderName}',
+                    body: isSystem ? lastMsg.text : '"${lastMsg.text}" trong "${task.title}"',
+                    type: NotificationType.chat,
+                    createdAt: lastMsg.sentAt,
+                    task: task,
+                  ));
+                }
+              }
+
+              // 2. Thông báo nhận nhiệm vụ (cho Poster)
+              if (isPoster && task.heroId != null && task.acceptedAt != null) {
+                notifs.add(AppNotification(
+                  id: 'accepted_${task.id}',
+                  title: 'Hero đã nhận việc!',
+                  body: '${task.heroName ?? "Một Hero"} đã nhận nhiệm vụ "${task.title}".',
+                  type: NotificationType.accepted,
+                  createdAt: task.acceptedAt!,
+                  task: task,
+                ));
+              }
+
+              // 3. Thông báo đã giao hàng (cho Poster)
+              if (isPoster && task.delivered && task.status != TaskStatus.completed) {
+                notifs.add(AppNotification(
+                  id: 'delivered_${task.id}',
+                  title: 'Đã giao hàng đến nơi!',
+                  body: '${task.heroName ?? "Hero"} đã giao hàng cho "${task.title}". Vui lòng xác nhận giải phóng thanh toán.',
+                  type: NotificationType.delivered,
+                  createdAt: task.acceptedAt ?? task.createdAt,
+                  task: task,
+                ));
+              }
+
+              // 4. Thông báo đã thanh toán (cho Hero)
+              if (isHero && (task.status == TaskStatus.completed || task.isPaid)) {
+                notifs.add(AppNotification(
+                  id: 'payment_${task.id}',
+                  title: 'Thù lao đã về ví!',
+                  body: 'Bạn nhận được ${formatVND(task.heroEarnings)} từ nhiệm vụ "${task.title}".',
+                  type: NotificationType.payment,
+                  createdAt: task.completedAt ?? task.createdAt,
+                  task: task,
+                ));
+              }
+
+              // 4b. Thông báo thanh toán thành công (cho Người đăng / Poster)
+              if (isPoster && (task.status == TaskStatus.completed || task.isPaid)) {
+                notifs.add(AppNotification(
+                  id: 'poster_paid_${task.id}',
+                  title: 'Thanh toán thành công!',
+                  body: 'Bạn đã hoàn tất thanh toán ${formatVND(task.compensation)} cho Hero ${task.heroName ?? "thực hiện"}. Đơn "${task.title}" đã hoàn tất.',
+                  type: NotificationType.payment,
+                  createdAt: task.completedAt ?? task.createdAt,
+                  task: task,
+                ));
+              }
+
+              // 5. Thông báo nhận đánh giá (cho Hero)
+              if (isHero && task.hasReviewed && task.completedAt != null) {
+                final ratingStr = task.heroRatingGiven?.toStringAsFixed(1) ?? '5.0';
+                final commentStr = (task.heroReviewComment != null && task.heroReviewComment!.isNotEmpty)
+                    ? ' - "${task.heroReviewComment}"'
+                    : '';
+                notifs.add(AppNotification(
+                  id: 'review_${task.id}',
+                  title: 'Bạn nhận được đánh giá mới!',
+                  body: 'Người đăng ${task.posterName} đã đánh giá bạn $ratingStr★$commentStr',
+                  type: NotificationType.review,
+                  createdAt: task.completedAt!,
+                  task: task,
+                ));
+              }
+            } catch (_) {}
+          }
+
+          notifs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return notifs;
+        })
+        .handleError((e) {
+          print('[Firestore] Lỗi luồng thông báo: $e');
+          return <AppNotification>[];
+        });
   }
 
   /// Hàm chuyển đổi Firestore doc thành HeroTask
@@ -610,6 +912,14 @@ class FirestoreService {
           ? (data['completedAt'] as Timestamp).toDate()
           : null,
       isPaid: data['isPaid'] ?? false,
+      messages: (data['messages'] is List)
+          ? (data['messages'] as List)
+              .map((m) => TaskMessage.fromMap(Map<String, dynamic>.from(m as Map)))
+              .toList()
+          : [],
+      hasReviewed: data['hasReviewed'] == true,
+      heroRatingGiven: (data['heroRatingGiven'] as num?)?.toDouble(),
+      heroReviewComment: data['heroReviewComment'],
     );
   }
 

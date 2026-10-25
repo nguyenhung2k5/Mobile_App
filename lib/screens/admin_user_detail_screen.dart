@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../models/user_profile.dart';
 import '../services/firestore_service.dart';
 import '../models/task_model.dart';
+import '../widgets/user_avatar.dart';
 import '../theme/app_colors.dart';
 
 class AdminUserDetailScreen extends StatefulWidget {
@@ -55,7 +57,17 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
   }
 
   Future<void> _handleSave() async {
-    final newRating = double.tryParse(_ratingController.text) ?? widget.user.rating;
+    final parsedRating = double.tryParse(_ratingController.text.trim());
+    if (parsedRating == null || parsedRating < 0.0 || parsedRating > 5.0) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Điểm đánh giá không hợp lệ'),
+          description: Text('Điểm đánh giá (Rating) phải là số từ 0.0 đến 5.0'),
+        ),
+      );
+      return;
+    }
+    final newRating = parsedRating;
     
     setState(() => _isLoading = true);
     try {
@@ -176,20 +188,12 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
             Center(
               child: Column(
                 children: [
-                  u.photoURL.isNotEmpty
-                      ? CircleAvatar(
-                          radius: 50,
-                          backgroundImage: NetworkImage(u.photoURL),
-                        )
-                      : CircleAvatar(
-                          radius: 50,
-                          backgroundColor: AppColors.orangeLight,
-                          child: Text(u.initials,
-                              style: const TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.orange600)),
-                        ),
+                  UserAvatar(
+                    name: u.displayName,
+                    photoUrl: u.photoURL,
+                    radius: 50,
+                    fontSize: 32,
+                  ),
                   const SizedBox(height: 16),
                   Text(u.displayName, style: theme.textTheme.h3),
                   Text(u.email, style: theme.textTheme.muted),
@@ -242,6 +246,9 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
             ShadInput(
               controller: _ratingController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+              ],
               placeholder: const Text('0.0 - 5.0'),
             ),
             

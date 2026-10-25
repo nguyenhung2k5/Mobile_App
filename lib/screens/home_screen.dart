@@ -3,10 +3,10 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../models/task_model.dart';
 import '../widgets/task_card.dart';
+import '../widgets/user_avatar.dart';
 import '../widgets/stat_card.dart';
 import '../theme/app_colors.dart';
 import '../services/firestore_service.dart';
-import '../services/auth_service.dart';
 import '../models/user_profile.dart';
 import '../utils/currency_format.dart';
 
@@ -26,7 +26,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  final AuthService _authService = AuthService();
   String selectedFilter = 'all';
 
   @override
@@ -104,7 +103,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildHeader(ShadTheme.of(context), displayName),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
+                      // Banner Cần thanh toán nổi bật (chỉ hiện khi có đơn cần trả tiền)
+                      _buildUnpaidTasksBanner(ShadTheme.of(context)),
+                      const SizedBox(height: 20),
                       _buildStatCards(ShadTheme.of(context), userProfile),
                       const SizedBox(height: 28),
                       // Có thể thêm biểu đồ hoạt động nếu có dữ liệu lịch sử
@@ -123,6 +125,126 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           },
         );
+      },
+    );
+  }
+
+  Widget _buildUnpaidTasksBanner(ShadThemeData theme) {
+    return StreamBuilder<List<HeroTask>>(
+      stream: _firestoreService.getUnpaidTasks(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final unpaidTasks = snapshot.data!;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFFF1F2), Color(0xFFFFE4E6)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: const Color(0xFFFDA4AF)),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withValues(alpha: 0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(LucideIcons.bellRing, color: Colors.red, size: 18),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Bạn có ${unpaidTasks.length} nhiệm vụ cần thanh toán!',
+                      style: TextStyle(
+                        fontSize: _isMobile ? 15 : 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.red.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Hero đã hoàn thành nhiệm vụ. Vui lòng giải phóng tiền công để chốt đơn nhé!',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.red.shade800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...unpaidTasks.map((task) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade100),
+                ),
+                child: Row(
+                  children: [
+                    Text(task.category.emoji, style: const TextStyle(fontSize: 20)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            task.title,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            'Hero: ${task.heroName ?? "Chưa rõ"}',
+                            style: TextStyle(fontSize: 11, color: theme.colorScheme.mutedForeground),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      formatVND(task.compensation),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.green600,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ShadButton(
+                      size: ShadButtonSize.sm,
+                      backgroundColor: AppColors.orange500,
+                      leading: const Icon(LucideIcons.qrCode, size: 14, color: Colors.white),
+                      child: const Text('Thanh toán', style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600)),
+                      onPressed: () => widget.onTaskTap(task),
+                    ),
+                  ],
+                ),
+              )),
+            ],
+          ),
+        ).animate().slideY(begin: -0.1, duration: 400.ms).fadeIn();
       },
     );
   }
@@ -373,7 +495,11 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.colorScheme.border.withValues(alpha: 0.5)))),
         child: Row(children: [
           Expanded(flex: 3, child: Row(children: [
-            ShadAvatar(task.posterAvatarUrl, size: const Size(28, 28), placeholder: Text(task.posterName.isNotEmpty ? task.posterName[0] : '?')),
+            UserAvatar(
+              name: task.posterName,
+              photoUrl: task.posterAvatarUrl,
+              radius: 14,
+            ),
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(task.title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: theme.colorScheme.foreground), overflow: TextOverflow.ellipsis),
@@ -392,7 +518,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _statusBadge(TaskStatus status) {
     Color bg; Color fg; String label;
     switch (status) {
-      case TaskStatus.open: bg = const Color(0xFFF0F9FF); fg = const Color(0xFF0284C7); label = 'Mở';
+      case TaskStatus.open: bg = const Color(0xFFF0F9FF); fg = const Color(0xFF0284C7); label = 'Đang mở';
       case TaskStatus.accepted: case TaskStatus.inProgress: bg = const Color(0xFFFEF9C3); fg = const Color(0xFFA16207); label = 'Đã nhận';
       case TaskStatus.completed: bg = const Color(0xFFDCFCE7); fg = const Color(0xFF16A34A); label = 'Hoàn thành';
       case TaskStatus.cancelled: bg = const Color(0xFFFEE2E2); fg = const Color(0xFFDC2626); label = 'Đã hủy';

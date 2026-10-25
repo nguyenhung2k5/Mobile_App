@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../models/task_model.dart';
 import '../widgets/task_card.dart';
+import '../widgets/user_avatar.dart';
 import '../theme/app_colors.dart';
 import '../services/firestore_service.dart';
 import '../utils/currency_format.dart';
@@ -207,8 +208,8 @@ class _BrowseScreenState extends State<BrowseScreen> {
       ),
       child: Row(
         children: [
-          _tab(theme, 'open', 'Nhiệm vụ mở'),
-          _tab(theme, 'accepted', 'Đã nhận'),
+          _tab(theme, 'open', 'Đang mở'),
+          _tab(theme, 'accepted', 'Đang làm'),
           _tab(theme, 'all', 'Tất cả'),
         ],
       ),
@@ -412,10 +413,10 @@ class _BrowseScreenState extends State<BrowseScreen> {
               flex: 3,
               child: Row(
                 children: [
-                  ShadAvatar(
-                    task.posterAvatarUrl,
-                    size: const Size(28, 28),
-                    placeholder: Text(task.posterName.isNotEmpty ? task.posterName[0] : '?'),
+                  UserAvatar(
+                    name: task.posterName,
+                    photoUrl: task.posterAvatarUrl,
+                    radius: 15,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -534,7 +535,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
       case TaskStatus.open:
         bg = AppColors.orangeLight;
         fg = AppColors.orange600;
-        label = 'Mở';
+        label = 'Đang mở';
       case TaskStatus.accepted:
       case TaskStatus.inProgress:
         bg = const Color(0xFFFEF9C3);

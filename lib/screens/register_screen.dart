@@ -25,6 +25,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  String? _nameError;
+  String? _emailError;
+  String? _passwordError;
+  String? _confirmPasswordError;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController.addListener(() {
+      if (_nameError != null) {
+        setState(() => _nameError = _validateName(_nameController.text));
+      }
+    });
+    _emailController.addListener(() {
+      if (_emailError != null) {
+        setState(() => _emailError = _validateEmail(_emailController.text));
+      }
+    });
+    _passwordController.addListener(() {
+      if (_passwordError != null) {
+        setState(() => _passwordError = _validatePassword(_passwordController.text));
+      }
+      if (_confirmPasswordError != null) {
+        setState(() => _confirmPasswordError = _validateConfirmPassword(
+          _confirmPasswordController.text,
+          _passwordController.text,
+        ));
+      }
+    });
+    _confirmPasswordController.addListener(() {
+      if (_confirmPasswordError != null) {
+        setState(() => _confirmPasswordError = _validateConfirmPassword(
+          _confirmPasswordController.text,
+          _passwordController.text,
+        ));
+      }
+    });
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -35,19 +74,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   String? _validateName(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Vui lòng nhập họ và tên';
+    final v = value?.trim() ?? '';
+    if (v.isEmpty) {
+      return 'Vui lòng nhập họ và tên của bạn';
+    }
+    if (v.length < 2) {
+      return 'Họ và tên phải có ít nhất 2 ký tự';
     }
     return null;
   }
 
   String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Vui lòng nhập email';
+    final v = value?.trim() ?? '';
+    if (v.isEmpty) {
+      return 'Vui lòng nhập địa chỉ email (VD: ten@gmail.com)';
     }
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(value)) {
-      return 'Email không hợp lệ';
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$',
+    );
+    if (!emailRegex.hasMatch(v)) {
+      return 'Email không đúng định dạng. Ví dụ: user@gmail.com';
+    }
+    final parts = v.split('@');
+    if (parts.length == 2) {
+      final domain = parts[1];
+      if (!domain.contains('.') || domain.endsWith('.') || domain.split('.').last.length < 2) {
+        return 'Tên miền email chưa hoàn chỉnh (Ví dụ: .com, .vn, .edu.vn)';
+      }
     }
     return null;
   }
@@ -57,31 +110,114 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return 'Vui lòng nhập mật khẩu';
     }
     if (value.length < 6) {
-      return 'Mật khẩu phải có ít nhất 6 ký tự';
+      return 'Mật khẩu phải có tối thiểu 6 ký tự';
     }
     return null;
   }
 
-  String? _validateConfirmPassword(String? value) {
+  String? _validateConfirmPassword(String? value, String password) {
     if (value == null || value.isEmpty) {
-      return 'Vui lòng xác nhận mật khẩu';
+      return 'Vui lòng nhập lại mật khẩu để xác nhận';
     }
-    if (value != _passwordController.text) {
-      return 'Mật khẩu không khớp';
+    if (value != password) {
+      return 'Mật khẩu xác nhận không khớp với mật khẩu đã nhập';
     }
     return null;
+  }
+
+  Widget _buildFieldError(String? errorText) {
+    if (errorText == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(LucideIcons.circleAlert, size: 14, color: Color(0xFFDC2626)),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              errorText,
+              style: const TextStyle(
+                color: Color(0xFFDC2626),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _handleRegister() async {
-    if (!_formKey.currentState!.validate()) return;
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    final nameErr = _validateName(name);
+    final emailErr = _validateEmail(email);
+    final passErr = _validatePassword(password);
+    final confirmErr = _validateConfirmPassword(confirmPassword, password);
+
+    setState(() {
+      _nameError = nameErr;
+      _emailError = emailErr;
+      _passwordError = passErr;
+      _confirmPasswordError = confirmErr;
+    });
+
+    if (nameErr != null) {
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          title: const Text('Họ và tên không hợp lệ'),
+          description: Text(nameErr),
+        ),
+      );
+      return;
+    }
+
+    if (emailErr != null) {
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          title: const Text('Email không hợp lệ'),
+          description: Text(emailErr),
+        ),
+      );
+      return;
+    }
+
+    if (passErr != null) {
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          title: const Text('Mật khẩu không hợp lệ'),
+          description: Text(passErr),
+        ),
+      );
+      return;
+    }
+
+    if (confirmErr != null) {
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          title: const Text('Xác nhận mật khẩu thất bại'),
+          description: Text(confirmErr),
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
       final userCredential = await _authService.signUpWithEmail(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        displayName: _nameController.text.trim(),
+        email: email,
+        password: password,
+        displayName: name,
       );
 
       if (!mounted) return;
@@ -93,8 +229,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             description: Text('Chào mừng bạn đến với TaskHero. Đang chuyển đến trang chủ...'),
           ),
         );
-        // Người dùng tự động đăng nhập sau khi đăng ký
-        // StreamBuilder trong main.dart sẽ phát hiện thay đổi trạng thái và chuyển đến AppShell
       }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -104,12 +238,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
       switch (e.code) {
         case 'email-already-in-use':
           errorMessage = 'Email này đã được sử dụng. Vui lòng đăng nhập hoặc dùng email khác.';
+          setState(() => _emailError = errorMessage);
           break;
         case 'weak-password':
-          errorMessage = 'Mật khẩu quá yếu. Vui lòng chọn mật khẩu mạnh hơn.';
+          errorMessage = 'Mật khẩu quá yếu. Vui lòng chọn mật khẩu mạnh hơn (tối thiểu 6 ký tự).';
+          setState(() => _passwordError = errorMessage);
           break;
         case 'invalid-email':
-          errorMessage = 'Email không hợp lệ.';
+          errorMessage = 'Địa chỉ email không được máy chủ chấp nhận.';
+          setState(() => _emailError = errorMessage);
+          break;
+        case 'network-request-failed':
+          errorMessage = 'Lỗi kết nối mạng. Vui lòng kiểm tra lại đường truyền internet.';
+          break;
+        case 'too-many-requests':
+          errorMessage = 'Quá nhiều yêu cầu thử lại. Vui lòng đợi trong giây lát.';
           break;
         case 'operation-not-allowed':
           errorMessage = 'Đăng ký bằng email/password chưa được bật. Liên hệ quản trị viên.';
@@ -216,18 +359,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        ShadInput(
-                          controller: _nameController,
-                          placeholder: const Text('Nguyễn Văn A'),
-                        ),
-                        if (_formKey.currentState != null && _validateName(_nameController.text) != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              _validateName(_nameController.text) ?? '',
-                              style: const TextStyle(color: Colors.red, fontSize: 12),
-                            ),
+                        Container(
+                          decoration: _nameError != null
+                              ? BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFDC2626), width: 1.5),
+                                )
+                              : null,
+                          child: ShadInput(
+                            controller: _nameController,
+                            placeholder: const Text('Nguyễn Văn A'),
                           ),
+                        ),
+                        _buildFieldError(_nameError),
 
                         const SizedBox(height: 16),
 
@@ -241,19 +385,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        ShadInput(
-                          controller: _emailController,
-                          placeholder: const Text('email@example.com'),
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                        if (_formKey.currentState != null && _validateEmail(_emailController.text) != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              _validateEmail(_emailController.text) ?? '',
-                              style: const TextStyle(color: Colors.red, fontSize: 12),
-                            ),
+                        Container(
+                          decoration: _emailError != null
+                              ? BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFDC2626), width: 1.5),
+                                )
+                              : null,
+                          child: ShadInput(
+                            controller: _emailController,
+                            placeholder: const Text('email@example.com'),
+                            keyboardType: TextInputType.emailAddress,
                           ),
+                        ),
+                        _buildFieldError(_emailError),
 
                         const SizedBox(height: 16),
 
@@ -267,28 +412,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        ShadInput(
-                          controller: _passwordController,
-                          placeholder: const Text('Tối thiểu 6 ký tự'),
-                          obscureText: _obscurePassword,
-                          trailing: IconButton(
-                            icon: Icon(
-                              _obscurePassword ? LucideIcons.eyeOff : LucideIcons.eye,
-                              size: 16,
+                        Container(
+                          decoration: _passwordError != null
+                              ? BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFDC2626), width: 1.5),
+                                )
+                              : null,
+                          child: ShadInput(
+                            controller: _passwordController,
+                            placeholder: const Text('Tối thiểu 6 ký tự'),
+                            obscureText: _obscurePassword,
+                            trailing: IconButton(
+                              icon: Icon(
+                                _obscurePassword ? LucideIcons.eyeOff : LucideIcons.eye,
+                                size: 16,
+                              ),
+                              onPressed: () {
+                                setState(() => _obscurePassword = !_obscurePassword);
+                              },
                             ),
-                            onPressed: () {
-                              setState(() => _obscurePassword = !_obscurePassword);
-                            },
                           ),
                         ),
-                        if (_formKey.currentState != null && _validatePassword(_passwordController.text) != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              _validatePassword(_passwordController.text) ?? '',
-                              style: const TextStyle(color: Colors.red, fontSize: 12),
-                            ),
-                          ),
+                        _buildFieldError(_passwordError),
 
                         const SizedBox(height: 16),
 
@@ -302,28 +448,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        ShadInput(
-                          controller: _confirmPasswordController,
-                          placeholder: const Text('Nhập lại mật khẩu'),
-                          obscureText: _obscureConfirmPassword,
-                          trailing: IconButton(
-                            icon: Icon(
-                              _obscureConfirmPassword ? LucideIcons.eyeOff : LucideIcons.eye,
-                              size: 16,
+                        Container(
+                          decoration: _confirmPasswordError != null
+                              ? BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFDC2626), width: 1.5),
+                                )
+                              : null,
+                          child: ShadInput(
+                            controller: _confirmPasswordController,
+                            placeholder: const Text('Nhập lại mật khẩu'),
+                            obscureText: _obscureConfirmPassword,
+                            onSubmitted: (_) => _handleRegister(),
+                            trailing: IconButton(
+                              icon: Icon(
+                                _obscureConfirmPassword ? LucideIcons.eyeOff : LucideIcons.eye,
+                                size: 16,
+                              ),
+                              onPressed: () {
+                                setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
+                              },
                             ),
-                            onPressed: () {
-                              setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
-                            },
                           ),
                         ),
-                        if (_formKey.currentState != null && _validateConfirmPassword(_confirmPasswordController.text) != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              _validateConfirmPassword(_confirmPasswordController.text) ?? '',
-                              style: const TextStyle(color: Colors.red, fontSize: 12),
-                            ),
-                          ),
+                        _buildFieldError(_confirmPasswordError),
 
                         const SizedBox(height: 24),
 
