@@ -326,56 +326,64 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
                 const SizedBox(height: 24),
 
-                // Lưới thống kê
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: isMobile ? 2 : 4,
-                  childAspectRatio: isMobile ? 1.0 : 1.5, // Thẻ cao hơn để chứa chữ
-                  mainAxisSpacing: 12, // Giảm khoảng cách
-                  crossAxisSpacing: 12, // Giảm khoảng cách
-                  children: [
-                    _buildStatCard(
-                      theme,
-                      'Tổng thu nhập',
-                      formatVND(userProfile.totalEarned),
-                      userProfile.totalEarned > 0 ? 'tổng thu nhập' : 'chưa có thu nhập',
-                      LucideIcons.banknote,
-                      AppColors.green500,
-                      isMobile: isMobile,
-                      changeColor: userProfile.totalEarned > 0 ? AppColors.green600 : Colors.grey,
-                    ),
-                    _buildStatCard(
-                      theme,
-                      'Tháng này',
-                      formatVND(userProfile.thisMonthEarned),
-                      userProfile.thisMonthEarned > 0 ? 'tháng này' : 'chưa có thu nhập',
-                      LucideIcons.trendingUp,
-                      AppColors.orange500,
-                      isMobile: isMobile,
-                      changeColor: userProfile.thisMonthEarned > 0 ? AppColors.green600 : Colors.grey,
-                    ),
-                    _buildStatCard(
-                      theme,
-                      'Nhiệm vụ làm',
-                      '${userProfile.tasksCompleted}',
-                      userProfile.tasksCompleted > 0 ? 'nhiệm vụ hoàn thành' : 'chưa có nhiệm vụ',
-                      LucideIcons.check,
-                      AppColors.blue500,
-                      isMobile: isMobile,
-                      changeColor: userProfile.tasksCompleted > 0 ? AppColors.green600 : Colors.grey,
-                    ),
-                    _buildStatCard(
-                      theme,
-                      'Nhiệm vụ đăng',
-                      '${userProfile.tasksPosted}',
-                      userProfile.tasksPosted > 0 ? 'nhiệm vụ đã đăng' : 'chưa có nhiệm vụ',
-                      LucideIcons.send,
-                      AppColors.purple500,
-                      isMobile: isMobile,
-                      changeColor: userProfile.tasksPosted > 0 ? AppColors.green600 : Colors.grey,
-                    ),
-                  ],
+                // Lưới thống kê (Tự động thích ứng kích thước tránh tràn màn hình trên Tablet)
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final availableWidth = constraints.maxWidth;
+                    final crossAxisCount = availableWidth < 700 ? 2 : 4;
+                    final childAspectRatio = availableWidth < 700 ? 1.5 : 1.2;
+
+                    return GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: crossAxisCount,
+                      childAspectRatio: childAspectRatio,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      children: [
+                        _buildStatCard(
+                          theme,
+                          'Tổng thu nhập',
+                          formatVND(userProfile.totalEarned),
+                          userProfile.totalEarned > 0 ? 'tổng thu nhập' : 'chưa có thu nhập',
+                          LucideIcons.banknote,
+                          AppColors.green500,
+                          isMobile: isMobile || availableWidth < 700,
+                          changeColor: userProfile.totalEarned > 0 ? AppColors.green600 : Colors.grey,
+                        ),
+                        _buildStatCard(
+                          theme,
+                          'Tháng này',
+                          formatVND(userProfile.thisMonthEarned),
+                          userProfile.thisMonthEarned > 0 ? 'tháng này' : 'chưa có thu nhập',
+                          LucideIcons.trendingUp,
+                          AppColors.orange500,
+                          isMobile: isMobile || availableWidth < 700,
+                          changeColor: userProfile.thisMonthEarned > 0 ? AppColors.green600 : Colors.grey,
+                        ),
+                        _buildStatCard(
+                          theme,
+                          'Nhiệm vụ làm',
+                          '${userProfile.tasksCompleted}',
+                          userProfile.tasksCompleted > 0 ? 'nhiệm vụ hoàn thành' : 'chưa có nhiệm vụ',
+                          LucideIcons.check,
+                          AppColors.blue500,
+                          isMobile: isMobile || availableWidth < 700,
+                          changeColor: userProfile.tasksCompleted > 0 ? AppColors.green600 : Colors.grey,
+                        ),
+                        _buildStatCard(
+                          theme,
+                          'Nhiệm vụ đăng',
+                          '${userProfile.tasksPosted}',
+                          userProfile.tasksPosted > 0 ? 'nhiệm vụ đã đăng' : 'chưa có nhiệm vụ',
+                          LucideIcons.send,
+                          AppColors.purple500,
+                          isMobile: isMobile || availableWidth < 700,
+                          changeColor: userProfile.tasksPosted > 0 ? AppColors.green600 : Colors.grey,
+                        ),
+                      ],
+                    );
+                  },
                 ).animate().fadeIn(delay: 100.ms, duration: 400.ms),
 
                 const SizedBox(height: 16),
@@ -886,7 +894,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     Color changeColor = AppColors.green600,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isMobile ? 12 : 14),
       decoration: BoxDecoration(
         color: theme.colorScheme.card,
         border: Border.all(color: theme.colorScheme.border),
@@ -914,21 +922,23 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               Icon(icon, size: isMobile ? 14 : 16, color: iconColor),
             ],
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: isMobile ? 18 : 24, // Giảm cỡ chữ trên mobile
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.foreground,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: isMobile ? 18 : 22,
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.foreground,
+              ),
+              maxLines: 1,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 4),
           Text(
             change,
             style: TextStyle(
-              fontSize: isMobile ? 10 : 12, // Giảm cỡ chữ trên mobile
+              fontSize: isMobile ? 10 : 12,
               color: changeColor,
             ),
             maxLines: 1,

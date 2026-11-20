@@ -54,7 +54,7 @@ class _PostTaskScreenState extends State<PostTaskScreen> {
     'Ký túc xá', 'Thư viện', 'Căng tin',
   ];
 
-  bool get _isMobile => MediaQuery.of(context).size.width < 768;
+  bool get _isMobile => MediaQuery.of(context).size.width < 900;
 
   // ───────────────── CHẾ ĐỘ DEMO ─────────────────
   // Đặt thành false để dùng mic thật + API thật

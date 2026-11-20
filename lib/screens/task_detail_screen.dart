@@ -31,7 +31,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final ScrollController _chatScrollController = ScrollController();
   bool _isAccepting = false;
 
-  bool get _isMobile => MediaQuery.of(context).size.width < 768;
+  bool get _isMobile => MediaQuery.of(context).size.width < 920;
 
   @override
   void dispose() {

@@ -76,10 +76,16 @@ class _BrowseScreenState extends State<BrowseScreen> {
                   padding: EdgeInsets.all(40),
                   child: Center(child: CircularProgressIndicator()),
                 )
-              else if (_isMobile) 
-                _buildMobileList(theme, filteredTasks) 
-              else 
-                _buildTable(theme, filteredTasks),
+              else
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth < 680) {
+                      return _buildMobileList(theme, filteredTasks);
+                    } else {
+                      return _buildTable(theme, filteredTasks);
+                    }
+                  },
+                ),
               const SizedBox(height: 48),
             ],
           ),

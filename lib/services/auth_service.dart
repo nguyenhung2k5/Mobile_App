@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_sign_in/google_sign_in.dart';
 import 'firestore_service.dart';
 
 class AuthService {
@@ -12,28 +13,36 @@ class AuthService {
   // Luồng theo dõi thay đổi trạng thái xác thực
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // Đăng nhập bằng Google (tối ưu cho Web)
+  // Đăng nhập bằng Google (Hỗ trợ cả Web và Android)
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      if (!kIsWeb) {
-        throw 'Đăng nhập Google Popup hiện hỗ trợ trên Web. Trên Android vui lòng sử dụng Email / Mật khẩu.';
-      }
-      print('[Auth] Bắt đầu đăng nhập Google bằng popup...');
-      print('[Auth] Domain hiện tại: ${Uri.base.host}');
-      
-      // Tạo Google provider
-      final GoogleAuthProvider googleProvider = GoogleAuthProvider();
-      
-      // Tùy chọn: Thêm tham số tuỳ chỉnh
-      googleProvider.setCustomParameters({
-        'prompt': 'select_account',  // Luôn hiển thị chọn tài khoản
-      });
+      UserCredential userCredential;
 
-      print('[Auth] Đang gọi signInWithPopup...');
-      
-      // Đăng nhập bằng popup
-      final UserCredential userCredential = 
-          await _auth.signInWithPopup(googleProvider);
+      if (kIsWeb) {
+        print('[Auth] Bắt đầu đăng nhập Google trên Web qua Popup...');
+        final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        googleProvider.setCustomParameters({
+          'prompt': 'select_account',
+        });
+        userCredential = await _auth.signInWithPopup(googleProvider);
+      } else {
+        print('[Auth] Bắt đầu đăng nhập Google trên Android qua google_sign_in...');
+        final GoogleSignIn googleSignIn = GoogleSignIn();
+        final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+        if (googleUser == null) {
+          print('[Auth] Người dùng đã đóng bảng chọn tài khoản Google.');
+          return null;
+        }
+
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        userCredential = await _auth.signInWithCredential(credential);
+      }
 
       print('[Auth] Đăng nhập thành công: ${userCredential.user?.email}');
       print('[Auth] ID người dùng: ${userCredential.user?.uid}');
@@ -44,7 +53,6 @@ class AuthService {
           await _firestoreService.createOrUpdateUserProfile(userCredential.user!);
         } catch (e) {
           print('[Auth] Cảnh báo: Không tạo/cập nhật được hồ sơ, nhưng đăng nhập đã thành công. Lỗi: $e');
-          // Tiếp tục dù sao để người dùng có thể sử dụng ứng dụng
         }
       }
       
